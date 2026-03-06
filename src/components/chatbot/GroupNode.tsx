@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
   GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
-  GripVertical, Ungroup, Plus, Trash2,
+  GripVertical, Ungroup, Plus, Trash2, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
