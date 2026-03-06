@@ -23,11 +23,10 @@ const Instancias = () => {
   const handleCreate = async () => {
     if (!name) return;
     try {
-      await createInstance.mutateAsync({ name, phone: phone || null });
+      await createInstance.mutateAsync({ name });
       toast({ title: "Instância criada com sucesso" });
       setOpen(false);
       setName("");
-      setPhone("");
     } catch (e: any) {
       toast({ title: "Erro ao criar instância", description: e.message, variant: "destructive" });
     }
