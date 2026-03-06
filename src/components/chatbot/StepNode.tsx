@@ -224,7 +224,7 @@ function NodePreview({ data }: { data: FlowNodeData }) {
       );
 
     default:
-      return <p className="text-[11px] text-muted-foreground">{nodeTypeConfig[data.type]?.description || data.type}</p>;
+      return <p className="text-[11px] text-muted-foreground">{(nodeTypeConfig as any)[data.type]?.description || String(data.type)}</p>;
   }
 }
 
