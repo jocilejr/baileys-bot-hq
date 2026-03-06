@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
   GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
-  GripVertical, Ungroup, Plus, Trash2,
+  GripVertical, Ungroup, Plus, Trash2, ChevronUp, ChevronDown,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -19,15 +19,21 @@ const iconMap: Record<string, FC<{ className?: string }>> = {
 function StepBubble({
   step,
   index,
+  totalSteps,
   isSelected,
   onSelect,
   onDelete,
+  onMoveUp,
+  onMoveDown,
 }: {
   step: FlowNodeData;
   index: number;
+  totalSteps: number;
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  onMoveUp: () => void;
+  onMoveDown: () => void;
 }) {
   const config = nodeTypeConfig[step.type];
   if (!config) return null;
@@ -73,7 +79,7 @@ function StepBubble({
   return (
     <div
       className={cn(
-        "group/bubble flex items-start gap-2 px-2.5 py-2 rounded-lg cursor-pointer transition-all",
+        "group/bubble flex items-center gap-1.5 px-1.5 py-2 rounded-lg cursor-pointer transition-all",
         isSelected
           ? "bg-primary/20 ring-1 ring-primary/40"
           : "bg-muted/30 hover:bg-muted/50"
@@ -83,16 +89,46 @@ function StepBubble({
         onSelect();
       }}
     >
+      {/* Reorder arrows - left side */}
+      <div className="flex flex-col gap-0.5 shrink-0 opacity-0 group-hover/bubble:opacity-100 transition-opacity">
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20"
+          disabled={index === 0}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMoveUp();
+          }}
+        >
+          <ChevronUp className="h-3 w-3" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20"
+          disabled={index === totalSteps - 1}
+          onClick={(e) => {
+            e.stopPropagation();
+            onMoveDown();
+          }}
+        >
+          <ChevronDown className="h-3 w-3" />
+        </Button>
+      </div>
+
+      {/* Icon */}
       <div
-        className="flex items-center justify-center w-6 h-6 rounded-md shrink-0 mt-0.5"
+        className="flex items-center justify-center w-6 h-6 rounded-md shrink-0"
         style={{ backgroundColor: config.color }}
       >
         <Icon className="h-3 w-3 text-white" />
       </div>
+
+      {/* Content */}
       <div className="min-w-0 flex-1">
         <p className="text-[11px] font-semibold text-foreground/90 truncate">{config.label}</p>
         <p className="text-[10px] text-muted-foreground truncate">{getPreviewText()}</p>
-        {/* Buttons preview */}
         {step.type === "sendButtons" && step.buttons && step.buttons.length > 0 && (
           <div className="flex flex-wrap gap-1 mt-1">
             {step.buttons.map((btn) => (
@@ -102,13 +138,14 @@ function StepBubble({
             ))}
           </div>
         )}
-        {/* Image preview */}
         {step.type === "sendImage" && step.mediaUrl && (
           <div className="mt-1 w-full h-10 rounded overflow-hidden bg-muted">
             <img src={step.mediaUrl} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           </div>
         )}
       </div>
+
+      {/* Delete */}
       <Button
         variant="ghost"
         size="icon"
@@ -218,12 +255,19 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
               <StepBubble
                 step={step}
                 index={i}
+                totalSteps={steps.length}
                 isSelected={false}
                 onSelect={() => {
                   emitEvent("group-step-select", { groupId: id, stepIndex: i, stepData: step });
                 }}
                 onDelete={() => {
                   emitEvent("group-step-remove", { groupId: id, stepIndex: i });
+                }}
+                onMoveUp={() => {
+                  if (i > 0) emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i - 1 });
+                }}
+                onMoveDown={() => {
+                  if (i < steps.length - 1) emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i + 1 });
                 }}
               />
               {i < steps.length - 1 && (

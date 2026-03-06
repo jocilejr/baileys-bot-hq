@@ -328,53 +328,70 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
   useEffect(() => {
     const handler = (e: Event) => {
       const { groupId, stepIndex } = (e as CustomEvent).detail;
+      setNodes((nds) => {
+        const group = nds.find((n) => n.id === groupId);
+        if (!group) return nds;
+
+        const groupData = group.data as unknown as FlowNodeData;
+        const steps = [...(groupData.steps || [])];
+        const removed = steps.splice(stepIndex, 1)[0];
+
+        // Create restored standalone node
+        const restoredNode: FlowNode = {
+          id: removed.stepId || `restored_${Date.now()}`,
+          type: "stepNode",
+          position: {
+            x: (group.position?.x || 0) + 340,
+            y: (group.position?.y || 0) + stepIndex * 80,
+          },
+          data: { ...removed, stepId: undefined } as any,
+        };
+
+        let updatedNodes = nds.filter((n) => n.id !== groupId);
+
+        if (steps.length === 0) {
+          // Group empty - just add restored
+        } else if (steps.length === 1) {
+          // Convert last step back to standalone
+          const lastStep = steps[0];
+          updatedNodes.push({
+            id: lastStep.stepId || groupId,
+            type: "stepNode",
+            position: { x: group.position?.x || 0, y: group.position?.y || 0 },
+            data: { ...lastStep, stepId: undefined } as any,
+          } as FlowNode);
+        } else {
+          // Keep group with remaining steps
+          updatedNodes.push({ ...group, data: { ...group.data, steps } } as FlowNode);
+        }
+
+        updatedNodes.push(restoredNode as FlowNode);
+        return updatedNodes;
+      });
+    };
+    document.addEventListener("group-step-remove", handler);
+    return () => document.removeEventListener("group-step-remove", handler);
+  }, [setNodes]);
+
+  // Listen for step reorder within groups
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { groupId, fromIndex, toIndex } = (e as CustomEvent).detail;
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id === groupId) {
             const groupData = n.data as unknown as FlowNodeData;
             const steps = [...(groupData.steps || [])];
-            const removed = steps.splice(stepIndex, 1)[0];
-
-            // Restore removed step as standalone node
-            const restoredNode: FlowNode = {
-              id: removed.stepId || `restored_${Date.now()}`,
-              type: "stepNode",
-              position: {
-                x: (n.position?.x || 0) + 340,
-                y: (n.position?.y || 0) + stepIndex * 80,
-              },
-              data: { ...removed, stepId: undefined } as any,
-            };
-
-            if (steps.length === 0) {
-              // Group empty - remove it, just return restored
-              return null as any; // will filter + add restored separately
-            }
-            if (steps.length === 1) {
-              // Convert back to standalone
-              const lastStep = steps[0];
-              return {
-                ...n,
-                id: lastStep.stepId || n.id,
-                type: "stepNode",
-                data: { ...lastStep, stepId: undefined } as any,
-              };
-            }
+            const [moved] = steps.splice(fromIndex as number, 1);
+            steps.splice(toIndex as number, 0, moved);
             return { ...n, data: { ...n.data, steps } };
           }
           return n;
-        }).filter(Boolean)
+        })
       );
-      // Note: restored nodes are added separately – let's handle inline
-      // Actually, we need to handle adding the restored node. Let's use a separate approach:
-      setNodes((nds) => {
-        // Check if we need to find and add the restored node
-        // This is already handled above for groups with >1 remaining steps
-        return nds;
-      });
     };
-    document.addEventListener("group-step-remove", handler);
-    return () => document.removeEventListener("group-step-remove", handler);
+    document.addEventListener("group-step-reorder", handler);
+    return () => document.removeEventListener("group-step-reorder", handler);
   }, [setNodes]);
 
   // Listen for add step to group
