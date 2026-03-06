@@ -63,15 +63,22 @@ function NodePreview({ data }: { data: FlowNodeData }) {
 
     case "sendAudio":
       return (
-        <div className="flex items-center gap-2 py-1">
-          <div className="flex items-center gap-0.5">
-            {[3, 5, 8, 4, 7, 3, 6, 4, 5, 3].map((h, i) => (
-              <div key={i} className="w-1 rounded-full bg-primary/60" style={{ height: `${h * 2}px` }} />
-            ))}
-          </div>
-          <span className="text-[10px] text-muted-foreground">
-            {data.mediaUrl ? "Áudio" : "Sem áudio"}
-          </span>
+        <div className="space-y-1">
+          {data.mediaUrl ? (
+            <div className="flex items-center gap-2 py-1">
+              <div className="flex items-center gap-0.5">
+                {[3, 5, 8, 4, 7, 3, 6, 4, 5, 3].map((h, i) => (
+                  <div key={i} className="w-1 rounded-full bg-primary/60" style={{ height: `${h * 2}px` }} />
+                ))}
+              </div>
+              <span className="text-[10px] text-muted-foreground">Áudio anexado</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 py-1 text-muted-foreground/50">
+              <Mic className="h-4 w-4" />
+              <span className="text-[10px] italic">Sem áudio</span>
+            </div>
+          )}
         </div>
       );
 
@@ -89,7 +96,11 @@ function NodePreview({ data }: { data: FlowNodeData }) {
         <div className="flex items-center gap-1.5 text-muted-foreground/60">
           <FileText className="h-5 w-5" />
           <div className="min-w-0">
-            <p className="text-[10px] truncate">{data.mediaUrl ? data.mediaUrl.split('/').pop() : "Sem arquivo"}</p>
+            <p className="text-[10px] truncate">
+              {data.mediaUrl
+                ? decodeURIComponent(data.mediaUrl.split("/").pop() || "arquivo")
+                : "Sem arquivo"}
+            </p>
             {data.caption && <p className="text-[10px] text-muted-foreground truncate">{data.caption}</p>}
           </div>
         </div>
