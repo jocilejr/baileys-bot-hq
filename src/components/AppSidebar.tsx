@@ -42,6 +42,8 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const { data: instances } = useInstances();
+  const onlineCount = instances?.filter((i) => i.status === "connected").length ?? 0;
   const isActive = (path: string) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
 
