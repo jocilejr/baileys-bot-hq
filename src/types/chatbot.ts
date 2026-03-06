@@ -15,8 +15,7 @@ export type FlowNodeType =
   | "closeChat"
   | "setTag"
   | "httpRequest"
-  | "aiResponse"
-  | "group";
+  | "aiResponse";
 
 export interface FlowNodeData {
   type: FlowNodeType;
@@ -87,7 +86,6 @@ export const nodeTypeConfig: Record<FlowNodeType, NodeTypeConfig> = {
   setTag:       { label: "Adicionar Tag",   color: "hsl(120 40% 50%)",  icon: "Tag",          category: "action",     description: "Marca o contato" },
   httpRequest:  { label: "HTTP Request",    color: "hsl(20 70% 50%)",   icon: "Globe",        category: "action",     description: "Chamada HTTP externa" },
   aiResponse:   { label: "Resposta IA",     color: "hsl(270 70% 60%)",  icon: "Sparkles",     category: "ai",         description: "Gera resposta com IA" },
-  group:        { label: "Grupo",           color: "hsl(220 15% 50%)",  icon: "Group",        category: "structure",  description: "Agrupa nós relacionados" },
 };
 
 export const categoryLabels: Record<string, string> = {
@@ -96,7 +94,6 @@ export const categoryLabels: Record<string, string> = {
   logic: "Lógica",
   action: "Ações",
   ai: "Inteligência Artificial",
-  structure: "Estrutura",
 };
 
 export function formatDelay(ms: number): string {
@@ -154,8 +151,6 @@ export function getDefaultNodeData(type: FlowNodeType): FlowNodeData {
       return { ...base, httpUrl: "", httpMethod: "POST", httpBody: "", httpHeaders: "" };
     case "aiResponse":
       return { ...base, aiPrompt: "", aiModel: "google/gemini-2.5-flash", aiTemperature: 0.7, aiMaxTokens: 1024 };
-    case "group":
-      return { ...base, groupTitle: "Novo Grupo" };
     default:
       return base;
   }
