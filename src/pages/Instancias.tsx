@@ -18,16 +18,14 @@ const Instancias = () => {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
 
   const handleCreate = async () => {
     if (!name) return;
     try {
-      await createInstance.mutateAsync({ name, phone: phone || null });
+      await createInstance.mutateAsync({ name });
       toast({ title: "Instância criada com sucesso" });
       setOpen(false);
       setName("");
-      setPhone("");
     } catch (e: any) {
       toast({ title: "Erro ao criar instância", description: e.message, variant: "destructive" });
     }
@@ -68,10 +66,6 @@ const Instancias = () => {
               <div className="space-y-2">
                 <Label>Nome</Label>
                 <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Ex: Vendas Principal" />
-              </div>
-              <div className="space-y-2">
-                <Label>Telefone</Label>
-                <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+55 11 99999-0001" />
               </div>
               <Button onClick={handleCreate} disabled={createInstance.isPending} className="w-full">
                 {createInstance.isPending ? "Criando..." : "Criar Instância"}
