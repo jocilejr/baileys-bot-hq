@@ -9,7 +9,7 @@ export function useConversations(status?: string) {
         .from("conversations")
         .select("*, contacts(name, phone, tags), instances(name)")
         .order("last_message_at", { ascending: false, nullsFirst: false });
-      if (status) query = query.eq("status", status);
+      if (status) query = query.eq("status", status as "open" | "closed" | "pending" | "bot");
       const { data, error } = await query;
       if (error) throw error;
       return data;
