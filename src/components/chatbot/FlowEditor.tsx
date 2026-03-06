@@ -135,7 +135,7 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
   }, [setNodes, setEdges]);
 
   // Docking logic: when a stepNode is dropped near another stepNode or group
-  const onNodeDragStop: NodeDragHandler = useCallback((_event, draggedNode) => {
+  const onNodeDragStop = useCallback((_event: any, draggedNode: any) => {
     if (draggedNode.type !== "stepNode") return;
 
     setNodes((nds) => {
