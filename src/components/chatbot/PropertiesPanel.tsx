@@ -6,6 +6,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Slider } from "@/components/ui/slider";
 import { Trash2, Plus, X } from "lucide-react";
 
 interface Props {
@@ -89,7 +90,7 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
           {/* Buttons */}
           {d.type === "sendButtons" && (
             <div className="space-y-2">
-              <Label className="text-xs">Botões</Label>
+              <Label className="text-xs">Botões (máx. 3)</Label>
               {(d.buttons || []).map((btn, i) => (
                 <div key={btn.id} className="flex gap-1">
                   <Input
@@ -115,6 +116,76 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
             </div>
           )}
 
+          {/* List Sections */}
+          {d.type === "sendList" && (
+            <div className="space-y-3">
+              <Label className="text-xs">Seções da Lista</Label>
+              {(d.listSections || []).map((sec, si) => (
+                <div key={si} className="space-y-1.5 p-2 rounded-md border border-border/50 bg-muted/30">
+                  <div className="flex gap-1">
+                    <Input
+                      value={sec.title}
+                      onChange={e => {
+                        const sections = [...(d.listSections || [])];
+                        sections[si] = { ...sec, title: e.target.value };
+                        update({ listSections: sections });
+                      }}
+                      className="h-7 text-xs font-semibold"
+                      placeholder="Título da seção"
+                    />
+                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => {
+                      update({ listSections: (d.listSections || []).filter((_, j) => j !== si) });
+                    }}><Trash2 className="h-3 w-3" /></Button>
+                  </div>
+                  {sec.rows.map((row, ri) => (
+                    <div key={row.id} className="flex gap-1 pl-2">
+                      <div className="flex-1 space-y-0.5">
+                        <Input
+                          value={row.title}
+                          onChange={e => {
+                            const sections = [...(d.listSections || [])];
+                            const rows = [...sections[si].rows];
+                            rows[ri] = { ...row, title: e.target.value };
+                            sections[si] = { ...sections[si], rows };
+                            update({ listSections: sections });
+                          }}
+                          className="h-6 text-[11px]"
+                          placeholder="Título do item"
+                        />
+                        <Input
+                          value={row.description || ""}
+                          onChange={e => {
+                            const sections = [...(d.listSections || [])];
+                            const rows = [...sections[si].rows];
+                            rows[ri] = { ...row, description: e.target.value };
+                            sections[si] = { ...sections[si], rows };
+                            update({ listSections: sections });
+                          }}
+                          className="h-6 text-[10px] text-muted-foreground"
+                          placeholder="Descrição (opcional)"
+                        />
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 self-center" onClick={() => {
+                        const sections = [...(d.listSections || [])];
+                        sections[si] = { ...sections[si], rows: sections[si].rows.filter((_, j) => j !== ri) };
+                        update({ listSections: sections });
+                      }}><X className="h-2.5 w-2.5" /></Button>
+                    </div>
+                  ))}
+                  <Button variant="ghost" size="sm" className="h-6 text-[10px] w-full" onClick={() => {
+                    const sections = [...(d.listSections || [])];
+                    sections[si] = { ...sections[si], rows: [...sections[si].rows, { id: String(Date.now()), title: "" }] };
+                    update({ listSections: sections });
+                  }}><Plus className="h-2.5 w-2.5 mr-1" />Item</Button>
+                </div>
+              ))}
+              <Button variant="outline" size="sm" className="h-7 text-xs w-full" onClick={() => {
+                const sections = [...(d.listSections || []), { title: "Nova Seção", rows: [{ id: String(Date.now()), title: "" }] }];
+                update({ listSections: sections });
+              }}><Plus className="h-3 w-3 mr-1" />Seção</Button>
+            </div>
+          )}
+
           {/* Condition */}
           {d.type === "condition" && (
             <>
@@ -125,7 +196,10 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
                   <SelectContent>
                     <SelectItem value="message">Mensagem</SelectItem>
                     <SelectItem value="contact_name">Nome do contato</SelectItem>
+                    <SelectItem value="phone">Telefone</SelectItem>
+                    <SelectItem value="email">E-mail</SelectItem>
                     <SelectItem value="tag">Tag</SelectItem>
+                    <SelectItem value="custom_field">Campo personalizado</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -148,11 +222,32 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
             </>
           )}
 
-          {/* Delay */}
+          {/* Delay - Slider */}
           {d.type === "delay" && (
-            <div className="space-y-1">
-              <Label className="text-xs">Tempo (ms)</Label>
-              <Input type="number" value={d.delayMs || 3000} onChange={e => update({ delayMs: Number(e.target.value) })} className="h-8 text-xs" />
+            <div className="space-y-3">
+              <Label className="text-xs">Tempo de espera</Label>
+              <div className="space-y-2">
+                <Slider
+                  value={[(d.delayMs || 3000) / 1000]}
+                  onValueChange={([v]) => update({ delayMs: v * 1000 })}
+                  min={1}
+                  max={300}
+                  step={1}
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>1s</span>
+                  <span className="font-semibold text-foreground text-xs">
+                    {(() => {
+                      const s = (d.delayMs || 3000) / 1000;
+                      if (s < 60) return `${s} segundo${s !== 1 ? "s" : ""}`;
+                      const m = Math.floor(s / 60);
+                      const rs = s % 60;
+                      return `${m}min${rs > 0 ? ` ${rs}s` : ""}`;
+                    })()}
+                  </span>
+                  <span>5min</span>
+                </div>
+              </div>
             </div>
           )}
 
@@ -177,7 +272,7 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
             <>
               <div className="space-y-1">
                 <Label className="text-xs">URL</Label>
-                <Input value={d.httpUrl || ""} onChange={e => update({ httpUrl: e.target.value })} className="h-8 text-xs" />
+                <Input value={d.httpUrl || ""} onChange={e => update({ httpUrl: e.target.value })} className="h-8 text-xs" placeholder="https://api.example.com/endpoint" />
               </div>
               <div className="space-y-1">
                 <Label className="text-xs">Método</Label>
@@ -191,8 +286,12 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
                 </Select>
               </div>
               <div className="space-y-1">
+                <Label className="text-xs">Headers (JSON)</Label>
+                <Textarea value={d.httpHeaders || ""} onChange={e => update({ httpHeaders: e.target.value })} rows={2} className="text-xs font-mono resize-none" placeholder='{"Authorization": "Bearer ..."}' />
+              </div>
+              <div className="space-y-1">
                 <Label className="text-xs">Body (JSON)</Label>
-                <Textarea value={d.httpBody || ""} onChange={e => update({ httpBody: e.target.value })} rows={3} className="text-xs font-mono resize-none" />
+                <Textarea value={d.httpBody || ""} onChange={e => update({ httpBody: e.target.value })} rows={3} className="text-xs font-mono resize-none" placeholder='{"key": "value"}' />
               </div>
             </>
           )}
@@ -201,7 +300,7 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
           {d.type === "aiResponse" && (
             <>
               <div className="space-y-1">
-                <Label className="text-xs">Prompt</Label>
+                <Label className="text-xs">Prompt do sistema</Label>
                 <Textarea value={d.aiPrompt || ""} onChange={e => update({ aiPrompt: e.target.value })} rows={4} className="text-xs resize-none" placeholder="Você é um assistente..." />
               </div>
               <div className="space-y-1">
@@ -210,13 +309,41 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
                   <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
+                    <SelectItem value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</SelectItem>
                     <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
+                    <SelectItem value="openai/gpt-5-nano">GPT-5 Nano</SelectItem>
                     <SelectItem value="openai/gpt-5-mini">GPT-5 Mini</SelectItem>
                     <SelectItem value="openai/gpt-5">GPT-5</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
+              <div className="space-y-2">
+                <Label className="text-xs">Temperatura: {(d.aiTemperature ?? 0.7).toFixed(1)}</Label>
+                <Slider
+                  value={[d.aiTemperature ?? 0.7]}
+                  onValueChange={([v]) => update({ aiTemperature: parseFloat(v.toFixed(1)) })}
+                  min={0}
+                  max={2}
+                  step={0.1}
+                />
+                <div className="flex justify-between text-[10px] text-muted-foreground">
+                  <span>Preciso</span>
+                  <span>Criativo</span>
+                </div>
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Max Tokens</Label>
+                <Input type="number" value={d.aiMaxTokens ?? 1024} onChange={e => update({ aiMaxTokens: Number(e.target.value) })} className="h-8 text-xs" min={64} max={8192} />
+              </div>
             </>
+          )}
+
+          {/* Group */}
+          {d.type === "group" && (
+            <div className="space-y-1">
+              <Label className="text-xs">Título do grupo</Label>
+              <Input value={d.groupTitle || ""} onChange={e => update({ groupTitle: e.target.value })} className="h-8 text-xs" />
+            </div>
           )}
         </div>
       </ScrollArea>
