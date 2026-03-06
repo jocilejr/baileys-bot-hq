@@ -387,13 +387,6 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
             </>
           )}
 
-          {/* Group */}
-          {d.type === "group" && (
-            <div className="space-y-1">
-              <Label className="text-xs">Título do grupo</Label>
-              <Input value={d.groupTitle || ""} onChange={e => update({ groupTitle: e.target.value })} className="h-8 text-xs" />
-            </div>
-          )}
         </div>
       </ScrollArea>
 

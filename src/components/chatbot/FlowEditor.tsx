@@ -95,23 +95,13 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
         y: e.clientY - bounds.top,
       });
 
-      if (type === "group") {
-        const newNode: FlowNode = {
-          id: `group_${Date.now()}`,
-          type: "groupNode",
-          position,
-          data: getDefaultNodeData("group") as any,
-        };
-        setNodes((nds) => [...nds, newNode]);
-      } else {
-        const newNode: FlowNode = {
-          id: `node_${Date.now()}`,
-          type: "stepNode",
-          position,
-          data: getDefaultNodeData(type) as any,
-        };
-        setNodes((nds) => [...nds, newNode]);
-      }
+      const newNode: FlowNode = {
+        id: `node_${Date.now()}`,
+        type: "stepNode",
+        position,
+        data: getDefaultNodeData(type) as any,
+      };
+      setNodes((nds) => [...nds, newNode]);
     },
     [setNodes]
   );
