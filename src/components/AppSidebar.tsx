@@ -118,8 +118,8 @@ export function AppSidebar() {
       <SidebarFooter className="p-4">
         {!collapsed && (
           <div className="flex items-center gap-2 rounded-lg bg-secondary p-2">
-            <div className="h-2 w-2 rounded-full bg-success animate-pulse-dot" />
-            <span className="text-xs text-muted-foreground">2 instâncias online</span>
+            <div className={`h-2 w-2 rounded-full ${onlineCount > 0 ? "bg-success animate-pulse-dot" : "bg-destructive"}`} />
+            <span className="text-xs text-muted-foreground">{onlineCount} instância{onlineCount !== 1 ? "s" : ""} online</span>
           </div>
         )}
       </SidebarFooter>
