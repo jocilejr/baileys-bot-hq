@@ -15,7 +15,8 @@ export type FlowNodeType =
   | "closeChat"
   | "setTag"
   | "httpRequest"
-  | "aiResponse";
+  | "aiResponse"
+  | "group";
 
 export interface FlowNodeData {
   type: FlowNodeType;
@@ -44,9 +45,14 @@ export interface FlowNodeData {
   httpUrl?: string;
   httpMethod?: "GET" | "POST" | "PUT";
   httpBody?: string;
+  httpHeaders?: string;
   // ai
   aiPrompt?: string;
   aiModel?: string;
+  aiTemperature?: number;
+  aiMaxTokens?: number;
+  // group
+  groupTitle?: string;
   [key: string]: unknown;
 }
 
@@ -57,26 +63,27 @@ export interface NodeTypeConfig {
   label: string;
   color: string;
   icon: string;
-  category: "trigger" | "message" | "logic" | "action" | "ai";
+  category: "trigger" | "message" | "logic" | "action" | "ai" | "structure";
   description: string;
 }
 
 export const nodeTypeConfig: Record<FlowNodeType, NodeTypeConfig> = {
-  trigger:      { label: "Gatilho",         color: "hsl(142 60% 45%)",  icon: "Zap",          category: "trigger",  description: "Inicia o fluxo" },
-  sendText:     { label: "Enviar Texto",    color: "hsl(210 80% 55%)",  icon: "MessageSquare",category: "message",  description: "Envia mensagem de texto" },
-  sendImage:    { label: "Enviar Imagem",   color: "hsl(280 60% 55%)",  icon: "Image",        category: "message",  description: "Envia uma imagem" },
-  sendAudio:    { label: "Enviar Áudio",    color: "hsl(330 60% 55%)",  icon: "Mic",          category: "message",  description: "Envia um áudio" },
-  sendVideo:    { label: "Enviar Vídeo",    color: "hsl(200 70% 50%)",  icon: "Video",        category: "message",  description: "Envia um vídeo" },
-  sendDocument: { label: "Enviar Documento",color: "hsl(30 70% 50%)",   icon: "FileText",     category: "message",  description: "Envia um arquivo" },
-  sendButtons:  { label: "Botões",          color: "hsl(170 60% 45%)",  icon: "LayoutGrid",   category: "message",  description: "Envia botões interativos" },
-  sendList:     { label: "Lista",           color: "hsl(190 60% 45%)",  icon: "List",         category: "message",  description: "Envia lista de opções" },
-  condition:    { label: "Condição",        color: "hsl(45 80% 50%)",   icon: "GitBranch",    category: "logic",    description: "Bifurca o fluxo" },
-  delay:        { label: "Atraso",          color: "hsl(0 0% 55%)",     icon: "Clock",        category: "logic",    description: "Aguarda um tempo" },
-  assignAgent:  { label: "Transferir",      color: "hsl(260 50% 55%)",  icon: "UserPlus",     category: "action",   description: "Transfere para atendente" },
-  closeChat:    { label: "Fechar Chat",     color: "hsl(0 60% 50%)",    icon: "XCircle",      category: "action",   description: "Encerra a conversa" },
-  setTag:       { label: "Adicionar Tag",   color: "hsl(120 40% 50%)",  icon: "Tag",          category: "action",   description: "Marca o contato" },
-  httpRequest:  { label: "HTTP Request",    color: "hsl(20 70% 50%)",   icon: "Globe",        category: "action",   description: "Chamada HTTP externa" },
-  aiResponse:   { label: "Resposta IA",     color: "hsl(270 70% 60%)",  icon: "Sparkles",     category: "ai",       description: "Gera resposta com IA" },
+  trigger:      { label: "Gatilho",         color: "hsl(142 60% 45%)",  icon: "Zap",          category: "trigger",    description: "Inicia o fluxo" },
+  sendText:     { label: "Enviar Texto",    color: "hsl(210 80% 55%)",  icon: "MessageSquare",category: "message",    description: "Envia mensagem de texto" },
+  sendImage:    { label: "Enviar Imagem",   color: "hsl(280 60% 55%)",  icon: "Image",        category: "message",    description: "Envia uma imagem" },
+  sendAudio:    { label: "Enviar Áudio",    color: "hsl(330 60% 55%)",  icon: "Mic",          category: "message",    description: "Envia um áudio" },
+  sendVideo:    { label: "Enviar Vídeo",    color: "hsl(200 70% 50%)",  icon: "Video",        category: "message",    description: "Envia um vídeo" },
+  sendDocument: { label: "Enviar Documento",color: "hsl(30 70% 50%)",   icon: "FileText",     category: "message",    description: "Envia um arquivo" },
+  sendButtons:  { label: "Botões",          color: "hsl(170 60% 45%)",  icon: "LayoutGrid",   category: "message",    description: "Envia botões interativos" },
+  sendList:     { label: "Lista",           color: "hsl(190 60% 45%)",  icon: "List",         category: "message",    description: "Envia lista de opções" },
+  condition:    { label: "Condição",        color: "hsl(45 80% 50%)",   icon: "GitBranch",    category: "logic",      description: "Bifurca o fluxo" },
+  delay:        { label: "Atraso",          color: "hsl(0 0% 55%)",     icon: "Clock",        category: "logic",      description: "Aguarda um tempo" },
+  assignAgent:  { label: "Transferir",      color: "hsl(260 50% 55%)",  icon: "UserPlus",     category: "action",     description: "Transfere para atendente" },
+  closeChat:    { label: "Fechar Chat",     color: "hsl(0 60% 50%)",    icon: "XCircle",      category: "action",     description: "Encerra a conversa" },
+  setTag:       { label: "Adicionar Tag",   color: "hsl(120 40% 50%)",  icon: "Tag",          category: "action",     description: "Marca o contato" },
+  httpRequest:  { label: "HTTP Request",    color: "hsl(20 70% 50%)",   icon: "Globe",        category: "action",     description: "Chamada HTTP externa" },
+  aiResponse:   { label: "Resposta IA",     color: "hsl(270 70% 60%)",  icon: "Sparkles",     category: "ai",         description: "Gera resposta com IA" },
+  group:        { label: "Grupo",           color: "hsl(220 15% 50%)",  icon: "Group",        category: "structure",  description: "Agrupa nós relacionados" },
 };
 
 export const categoryLabels: Record<string, string> = {
@@ -85,6 +92,30 @@ export const categoryLabels: Record<string, string> = {
   logic: "Lógica",
   action: "Ações",
   ai: "Inteligência Artificial",
+  structure: "Estrutura",
+};
+
+export function formatDelay(ms: number): string {
+  if (ms < 1000) return `${ms}ms`;
+  const s = ms / 1000;
+  if (s < 60) return `${s}s`;
+  const m = s / 60;
+  if (m < 60) return `${Math.round(m)}min`;
+  return `${Math.round(m / 60)}h`;
+}
+
+export const operatorLabels: Record<string, string> = {
+  equals: "igual a",
+  contains: "contém",
+  startsWith: "começa com",
+  regex: "regex",
+};
+
+export const triggerTypeLabels: Record<string, string> = {
+  keyword: "Palavra-chave",
+  first_message: "Primeira mensagem",
+  schedule: "Agendado",
+  webhook: "Webhook",
 };
 
 export function getDefaultNodeData(type: FlowNodeType): FlowNodeData {
@@ -116,9 +147,11 @@ export function getDefaultNodeData(type: FlowNodeType): FlowNodeData {
     case "setTag":
       return { ...base, tagName: "" };
     case "httpRequest":
-      return { ...base, httpUrl: "", httpMethod: "POST", httpBody: "" };
+      return { ...base, httpUrl: "", httpMethod: "POST", httpBody: "", httpHeaders: "" };
     case "aiResponse":
-      return { ...base, aiPrompt: "", aiModel: "google/gemini-2.5-flash" };
+      return { ...base, aiPrompt: "", aiModel: "google/gemini-2.5-flash", aiTemperature: 0.7, aiMaxTokens: 1024 };
+    case "group":
+      return { ...base, groupTitle: "Novo Grupo" };
     default:
       return base;
   }
