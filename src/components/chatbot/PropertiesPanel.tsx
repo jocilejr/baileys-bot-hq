@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
 import { Trash2, Plus, X } from "lucide-react";
+import MediaUpload from "./MediaUpload";
 
 interface Props {
   node: FlowNode;
@@ -71,19 +72,67 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
             </div>
           )}
 
-          {/* Media URL */}
-          {["sendImage", "sendAudio", "sendVideo", "sendDocument"].includes(d.type) && (
+          {/* Media Upload */}
+          {d.type === "sendImage" && (
             <>
               <div className="space-y-1">
-                <Label className="text-xs">URL da mídia</Label>
-                <Input value={d.mediaUrl || ""} onChange={e => update({ mediaUrl: e.target.value })} className="h-8 text-xs" placeholder="https://..." />
+                <Label className="text-xs">Imagem</Label>
+                <MediaUpload
+                  value={d.mediaUrl || ""}
+                  onChange={(url) => update({ mediaUrl: url })}
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  type="image"
+                />
               </div>
-              {d.type !== "sendAudio" && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Legenda</Label>
-                  <Input value={d.caption || ""} onChange={e => update({ caption: e.target.value })} className="h-8 text-xs" />
-                </div>
-              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Legenda</Label>
+                <Input value={d.caption || ""} onChange={e => update({ caption: e.target.value })} className="h-8 text-xs" />
+              </div>
+            </>
+          )}
+          {d.type === "sendAudio" && (
+            <div className="space-y-1">
+              <Label className="text-xs">Áudio</Label>
+              <MediaUpload
+                value={d.mediaUrl || ""}
+                onChange={(url) => update({ mediaUrl: url })}
+                accept="audio/mpeg,audio/ogg,audio/wav,audio/mp4,audio/x-m4a"
+                type="audio"
+              />
+            </div>
+          )}
+          {d.type === "sendVideo" && (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs">Vídeo</Label>
+                <MediaUpload
+                  value={d.mediaUrl || ""}
+                  onChange={(url) => update({ mediaUrl: url })}
+                  accept="video/mp4,video/quicktime,video/x-msvideo"
+                  type="video"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Legenda</Label>
+                <Input value={d.caption || ""} onChange={e => update({ caption: e.target.value })} className="h-8 text-xs" />
+              </div>
+            </>
+          )}
+          {d.type === "sendDocument" && (
+            <>
+              <div className="space-y-1">
+                <Label className="text-xs">Documento</Label>
+                <MediaUpload
+                  value={d.mediaUrl || ""}
+                  onChange={(url) => update({ mediaUrl: url })}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt"
+                  type="document"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs">Legenda</Label>
+                <Input value={d.caption || ""} onChange={e => update({ caption: e.target.value })} className="h-8 text-xs" />
+              </div>
             </>
           )}
 
