@@ -9,7 +9,6 @@ import {
   useEdgesState,
   type Connection,
   type ReactFlowInstance,
-  type NodeDragHandler,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
