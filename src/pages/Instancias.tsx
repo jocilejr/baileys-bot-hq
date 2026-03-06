@@ -18,7 +18,6 @@ const Instancias = () => {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [phone, setPhone] = useState("");
 
   const handleCreate = async () => {
     if (!name) return;
