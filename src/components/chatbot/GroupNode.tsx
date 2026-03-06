@@ -255,12 +255,19 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
               <StepBubble
                 step={step}
                 index={i}
+                totalSteps={steps.length}
                 isSelected={false}
                 onSelect={() => {
                   emitEvent("group-step-select", { groupId: id, stepIndex: i, stepData: step });
                 }}
                 onDelete={() => {
                   emitEvent("group-step-remove", { groupId: id, stepIndex: i });
+                }}
+                onMoveUp={() => {
+                  if (i > 0) emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i - 1 });
+                }}
+                onMoveDown={() => {
+                  if (i < steps.length - 1) emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i + 1 });
                 }}
               />
               {i < steps.length - 1 && (
