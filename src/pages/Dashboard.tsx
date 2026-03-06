@@ -1,13 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageSquare, Users, Send, Clock, Smartphone, TrendingUp } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, AreaChart, Area } from "recharts";
-
-const stats = [
-  { label: "Conversas Ativas", value: "127", icon: MessageSquare, change: "+12%" },
-  { label: "Mensagens Hoje", value: "2.458", icon: Send, change: "+8%" },
-  { label: "Contatos", value: "4.392", icon: Users, change: "+3%" },
-  { label: "Tempo Médio", value: "2m 34s", icon: Clock, change: "-15%" },
-];
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
+import { useDashboardStats } from "@/hooks/useDashboardStats";
+import { Skeleton } from "@/components/ui/skeleton";
 
 const volumeData = [
   { hora: "08h", enviadas: 120, recebidas: 180 },
@@ -22,13 +17,16 @@ const volumeData = [
   { hora: "17h", enviadas: 250, recebidas: 200 },
 ];
 
-const instances = [
-  { name: "Vendas Principal", number: "+55 11 9999-0001", status: "online" },
-  { name: "Suporte", number: "+55 11 9999-0002", status: "online" },
-  { name: "Marketing", number: "+55 11 9999-0003", status: "offline" },
-];
-
 const Dashboard = () => {
+  const { data: stats, isLoading } = useDashboardStats();
+
+  const statCards = [
+    { label: "Conversas Ativas", value: stats?.activeConversations ?? 0, icon: MessageSquare },
+    { label: "Mensagens Hoje", value: stats?.messagesToday ?? 0, icon: Send },
+    { label: "Contatos", value: stats?.totalContacts ?? 0, icon: Users },
+    { label: "Tempo Médio", value: "—", icon: Clock },
+  ];
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -37,16 +35,15 @@ const Dashboard = () => {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {stats.map((stat) => (
+        {statCards.map((stat) => (
           <Card key={stat.label} className="bg-card border-border">
             <CardContent className="p-4">
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs text-muted-foreground uppercase tracking-wide">{stat.label}</p>
-                  <p className="text-2xl font-bold text-foreground mt-1">{stat.value}</p>
-                  <span className={`text-xs font-medium ${stat.change.startsWith("+") ? "text-success" : "text-info"}`}>
-                    {stat.change}
-                  </span>
+                  {isLoading ? <Skeleton className="h-8 w-16 mt-1" /> : (
+                    <p className="text-2xl font-bold text-foreground mt-1">{stat.value}</p>
+                  )}
                 </div>
                 <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
                   <stat.icon className="h-5 w-5 text-primary" />
@@ -81,14 +78,7 @@ const Dashboard = () => {
                 <CartesianGrid strokeDasharray="3 3" stroke="hsl(200, 12%, 18%)" />
                 <XAxis dataKey="hora" stroke="hsl(200, 10%, 55%)" fontSize={12} />
                 <YAxis stroke="hsl(200, 10%, 55%)" fontSize={12} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "hsl(200, 15%, 11%)",
-                    border: "1px solid hsl(200, 12%, 18%)",
-                    borderRadius: "8px",
-                    color: "hsl(200, 10%, 92%)",
-                  }}
-                />
+                <Tooltip contentStyle={{ backgroundColor: "hsl(200, 15%, 11%)", border: "1px solid hsl(200, 12%, 18%)", borderRadius: "8px", color: "hsl(200, 10%, 92%)" }} />
                 <Area type="monotone" dataKey="enviadas" stroke="hsl(142, 60%, 45%)" fill="url(#enviadas)" strokeWidth={2} />
                 <Area type="monotone" dataKey="recebidas" stroke="hsl(210, 80%, 55%)" fill="url(#recebidas)" strokeWidth={2} />
               </AreaChart>
@@ -104,18 +94,24 @@ const Dashboard = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            {instances.map((inst) => (
-              <div key={inst.name} className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
-                <div>
-                  <p className="text-sm font-medium text-foreground">{inst.name}</p>
-                  <p className="text-xs text-muted-foreground">{inst.number}</p>
+            {isLoading ? (
+              Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-14 w-full" />)
+            ) : stats?.instances.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">Nenhuma instância cadastrada</p>
+            ) : (
+              stats?.instances.map((inst) => (
+                <div key={inst.id} className="flex items-center justify-between rounded-lg bg-secondary/50 p-3">
+                  <div>
+                    <p className="text-sm font-medium text-foreground">{inst.name}</p>
+                    <p className="text-xs text-muted-foreground">{inst.phone || "Sem número"}</p>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className={`h-2 w-2 rounded-full ${inst.status === "connected" ? "bg-success animate-pulse-dot" : "bg-destructive"}`} />
+                    <span className="text-xs text-muted-foreground capitalize">{inst.status}</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <div className={`h-2 w-2 rounded-full ${inst.status === "online" ? "bg-success animate-pulse-dot" : "bg-destructive"}`} />
-                  <span className="text-xs text-muted-foreground capitalize">{inst.status}</span>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </CardContent>
         </Card>
       </div>

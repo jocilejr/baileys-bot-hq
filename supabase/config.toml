@@ -1,0 +1,7 @@
+project_id = "lyslqcapgawzffivlgjh"
+
+[functions.baileys-proxy]
+verify_jwt = false
+
+[functions.webhook-receiver]
+verify_jwt = false
