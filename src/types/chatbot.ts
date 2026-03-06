@@ -53,6 +53,10 @@ export interface FlowNodeData {
   aiMaxTokens?: number;
   // group
   groupTitle?: string;
+  steps?: FlowNodeData[];
+  defaultDelay?: number;
+  // internal
+  stepId?: string;
   [key: string]: unknown;
 }
 
