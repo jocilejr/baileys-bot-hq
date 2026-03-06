@@ -21,9 +21,11 @@ export type Database = {
           created_at: string
           created_by: string | null
           description: string | null
+          edges: Json | null
           id: string
           instance_ids: string[] | null
           name: string
+          nodes: Json | null
           trigger_type: Database["public"]["Enums"]["trigger_type"]
           trigger_value: string | null
           updated_at: string
@@ -34,9 +36,11 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          edges?: Json | null
           id?: string
           instance_ids?: string[] | null
           name: string
+          nodes?: Json | null
           trigger_type?: Database["public"]["Enums"]["trigger_type"]
           trigger_value?: string | null
           updated_at?: string
@@ -47,9 +51,11 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          edges?: Json | null
           id?: string
           instance_ids?: string[] | null
           name?: string
+          nodes?: Json | null
           trigger_type?: Database["public"]["Enums"]["trigger_type"]
           trigger_value?: string | null
           updated_at?: string
