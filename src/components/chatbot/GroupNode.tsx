@@ -23,6 +23,7 @@ function StepBubble({
   index,
   totalSteps,
   isSelected,
+  isFinisher,
   onSelect,
   onDelete,
   onMoveUp,
@@ -32,6 +33,7 @@ function StepBubble({
   index: number;
   totalSteps: number;
   isSelected: boolean;
+  isFinisher: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onMoveUp: () => void;
