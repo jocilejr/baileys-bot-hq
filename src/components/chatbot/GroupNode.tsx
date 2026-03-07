@@ -191,17 +191,6 @@ function StepBubble({
   );
 }
 
-function DelayIndicator({ delayMs }: { delayMs: number }) {
-  return (
-    <div className="flex items-center gap-1.5 px-3 py-0.5">
-      <div className="flex-1 border-t border-dashed border-emerald-500/30" />
-      <span className="text-[9px] font-medium text-emerald-400 whitespace-nowrap">
-        {formatDelay(delayMs)} · digitando...
-      </span>
-      <div className="flex-1 border-t border-dashed border-emerald-500/30" />
-    </div>
-  );
-}
 
 interface GroupNodeProps extends NodeProps {
   data: Record<string, unknown>;
@@ -304,9 +293,6 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
                     emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i + 1 });
                 }}
               />
-              {i < steps.length - 1 && (
-                <DelayIndicator delayMs={steps[i + 1]?.delayMs || defaultDelay} />
-              )}
             </div>
           ))
         )}
