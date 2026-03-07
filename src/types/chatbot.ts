@@ -15,7 +15,9 @@ export type FlowNodeType =
   | "closeChat"
   | "setTag"
   | "httpRequest"
-  | "aiResponse";
+  | "aiResponse"
+  | "waitMessage"
+  | "waitClick";
 
 export interface FlowNodeData {
   type: FlowNodeType;
