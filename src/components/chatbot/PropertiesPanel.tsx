@@ -1,481 +1,476 @@
-import type { FlowNode, FlowNodeData } from "@/types/chatbot";
-import { nodeTypeConfig, actionTypeLabels } from "@/types/chatbot";
+import { useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { Slider } from "@/components/ui/slider";
-import { Trash2, Plus, X } from "lucide-react";
-import MediaUpload from "./MediaUpload";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
+import { X, Trash2, Unlink, icons } from "lucide-react";
+import { type FlowNode, type FlowNodeData, type FlowStepData, nodeTypeConfig } from "@/types/chatbot";
+import { TextFormatToolbar } from "@/components/chatbot/TextFormatToolbar";
+import { MediaUpload } from "@/components/chatbot/MediaUpload";
 
-interface Props {
+interface PropertiesPanelProps {
   node: FlowNode;
-  onChange: (id: string, data: Partial<FlowNodeData>) => void;
+  selectedStepId?: string | null;
+  onSelectStep?: (stepId: string | null) => void;
+  onUpdate: (nodeId: string, data: Partial<FlowNodeData>) => void;
+  onUpdateStep?: (nodeId: string, stepId: string, data: Partial<FlowNodeData>) => void;
   onDelete: (id: string) => void;
+  onRemoveStep?: (nodeId: string, stepId: string) => void;
   onClose: () => void;
 }
 
-export default function PropertiesPanel({ node, onChange, onDelete, onClose }: Props) {
-  const d = node.data as unknown as FlowNodeData;
-  const config = nodeTypeConfig[d.type];
-  const update = (partial: Partial<FlowNodeData>) => onChange(node.id, partial);
-
-  if (!config) return null;
+function StepFields({ d, update }: { d: FlowNodeData; update: (changes: Partial<FlowNodeData>) => void }) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   return (
-    <div className="w-72 border-l bg-card flex flex-col h-full">
-      <div className="flex items-center justify-between px-3 py-2 border-b">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: config.color }} />
-          <span className="text-sm font-semibold text-foreground">{config.label}</span>
-        </div>
-        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}><X className="h-4 w-4" /></Button>
+    <>
+      {/* Label */}
+      <div className="space-y-1.5">
+        <Label className="text-xs">Nome</Label>
+        <Input value={d.label} onChange={(e) => update({ label: e.target.value })} className="h-8 text-xs" />
       </div>
 
-      <ScrollArea className="flex-1">
-        <div className="p-3 space-y-4">
-          {/* Label */}
-          <div className="space-y-1">
-            <Label className="text-xs">Nome do bloco</Label>
-            <Input value={d.label || ""} onChange={e => update({ label: e.target.value })} className="h-8 text-xs" />
+      {/* Trigger */}
+      {d.type === "trigger" && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Tipo de gatilho</Label>
+            <Select value={d.triggerType || "keyword"} onValueChange={(v) => update({ triggerType: v as any })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="keyword">Palavra-chave</SelectItem>
+                <SelectItem value="any_message">Qualquer mensagem</SelectItem>
+                <SelectItem value="event">Evento</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-
-          {/* Trigger */}
-          {d.type === "trigger" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Tipo de gatilho</Label>
-                <Select value={d.triggerType || "keyword"} onValueChange={v => update({ triggerType: v as FlowNodeData["triggerType"] })}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="keyword">Palavra-chave</SelectItem>
-                    <SelectItem value="first_message">Primeira mensagem</SelectItem>
-                    <SelectItem value="schedule">Agendado</SelectItem>
-                    <SelectItem value="webhook">Webhook</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              {d.triggerType !== "first_message" && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Valor</Label>
-                  <Input value={d.triggerValue || ""} onChange={e => update({ triggerValue: e.target.value })} className="h-8 text-xs" placeholder="ex: oi, menu, #promo" />
-                </div>
-              )}
-            </>
-          )}
-
-          {/* sendText */}
-          {d.type === "sendText" && (
-            <div className="space-y-1">
-              <Label className="text-xs">Mensagem</Label>
-              <Textarea value={d.textContent || ""} onChange={e => update({ textContent: e.target.value })} rows={4} className="text-xs resize-none" placeholder="Use *negrito*, _itálico_, ~riscado~" />
+          {(d.triggerType === "keyword" || !d.triggerType) && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Palavra-chave</Label>
+              <Input value={d.triggerKeyword || ""} onChange={(e) => update({ triggerKeyword: e.target.value })} placeholder="Ex: oi, olá, menu" className="h-8 text-xs" />
             </div>
           )}
+        </>
+      )}
 
-          {/* sendButtons text */}
-          {d.type === "sendButtons" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Mensagem</Label>
-                <Textarea value={d.textContent || ""} onChange={e => update({ textContent: e.target.value })} rows={3} className="text-xs resize-none" placeholder="Texto da mensagem" />
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Botões (máx. 3)</Label>
-                {(d.buttons || []).map((btn, i) => (
-                  <div key={btn.id} className="flex gap-1">
-                    <Input value={btn.text} onChange={e => {
-                      const buttons = [...(d.buttons || [])];
-                      buttons[i] = { ...btn, text: e.target.value };
-                      update({ buttons });
-                    }} className="h-7 text-xs" />
-                    <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => {
-                      update({ buttons: (d.buttons || []).filter((_, j) => j !== i) });
-                    }}><Trash2 className="h-3 w-3" /></Button>
-                  </div>
-                ))}
-                {(d.buttons || []).length < 3 && (
-                  <Button variant="outline" size="sm" className="h-7 text-xs w-full" onClick={() => {
-                    const buttons = [...(d.buttons || []), { id: String(Date.now()), text: `Opção ${(d.buttons || []).length + 1}` }];
-                    update({ buttons });
-                  }}><Plus className="h-3 w-3 mr-1" />Botão</Button>
-                )}
-              </div>
-            </>
-          )}
-
-          {/* sendList */}
-          {d.type === "sendList" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Mensagem</Label>
-                <Textarea value={d.textContent || ""} onChange={e => update({ textContent: e.target.value })} rows={2} className="text-xs resize-none" />
-              </div>
-              <div className="space-y-3">
-                <Label className="text-xs">Seções da Lista</Label>
-                {(d.listSections || []).map((sec, si) => (
-                  <div key={si} className="space-y-1.5 p-2 rounded-md border border-border/50 bg-muted/30">
-                    <div className="flex gap-1">
-                      <Input value={sec.title} onChange={e => {
-                        const sections = [...(d.listSections || [])];
-                        sections[si] = { ...sec, title: e.target.value };
-                        update({ listSections: sections });
-                      }} className="h-7 text-xs font-semibold" placeholder="Título da seção" />
-                      <Button variant="ghost" size="icon" className="h-7 w-7 shrink-0" onClick={() => {
-                        update({ listSections: (d.listSections || []).filter((_, j) => j !== si) });
-                      }}><Trash2 className="h-3 w-3" /></Button>
-                    </div>
-                    {sec.rows.map((row, ri) => (
-                      <div key={row.id} className="flex gap-1 pl-2">
-                        <div className="flex-1 space-y-0.5">
-                          <Input value={row.title} onChange={e => {
-                            const sections = [...(d.listSections || [])];
-                            const rows = [...sections[si].rows];
-                            rows[ri] = { ...row, title: e.target.value };
-                            sections[si] = { ...sections[si], rows };
-                            update({ listSections: sections });
-                          }} className="h-6 text-[11px]" placeholder="Título do item" />
-                        </div>
-                        <Button variant="ghost" size="icon" className="h-6 w-6 shrink-0 self-center" onClick={() => {
-                          const sections = [...(d.listSections || [])];
-                          sections[si] = { ...sections[si], rows: sections[si].rows.filter((_, j) => j !== ri) };
-                          update({ listSections: sections });
-                        }}><X className="h-2.5 w-2.5" /></Button>
-                      </div>
-                    ))}
-                    <Button variant="ghost" size="sm" className="h-6 text-[10px] w-full" onClick={() => {
-                      const sections = [...(d.listSections || [])];
-                      sections[si] = { ...sections[si], rows: [...sections[si].rows, { id: String(Date.now()), title: "" }] };
-                      update({ listSections: sections });
-                    }}><Plus className="h-2.5 w-2.5 mr-1" />Item</Button>
-                  </div>
-                ))}
-                <Button variant="outline" size="sm" className="h-7 text-xs w-full" onClick={() => {
-                  const sections = [...(d.listSections || []), { title: "Nova Seção", rows: [{ id: String(Date.now()), title: "" }] }];
-                  update({ listSections: sections });
-                }}><Plus className="h-3 w-3 mr-1" />Seção</Button>
-              </div>
-            </>
-          )}
-
-          {/* sendImage */}
-          {d.type === "sendImage" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Imagem</Label>
-                <MediaUpload value={d.mediaUrl || ""} onChange={(url) => update({ mediaUrl: url })} accept="image/jpeg,image/png,image/webp,image/gif" type="image" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Legenda</Label>
-                <Input value={d.caption || ""} onChange={e => update({ caption: e.target.value })} className="h-8 text-xs" />
-              </div>
-            </>
-          )}
-
-          {/* sendAudio */}
-          {d.type === "sendAudio" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Áudio</Label>
-                <MediaUpload value={d.audioUrl || ""} onChange={(url) => update({ audioUrl: url })} accept="audio/mpeg,audio/ogg,audio/wav,audio/mp4,audio/x-m4a" type="audio" />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Simular gravação</Label>
-                <Switch checked={d.simulateRecording || false} onCheckedChange={(v) => update({ simulateRecording: v })} />
-              </div>
-            </>
-          )}
-
-          {/* sendVideo */}
-          {d.type === "sendVideo" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Vídeo</Label>
-                <MediaUpload value={d.mediaUrl || ""} onChange={(url) => update({ mediaUrl: url })} accept="video/mp4,video/quicktime,video/x-msvideo" type="video" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Legenda</Label>
-                <Input value={d.caption || ""} onChange={e => update({ caption: e.target.value })} className="h-8 text-xs" />
-              </div>
-            </>
-          )}
-
-          {/* sendFile */}
-          {d.type === "sendFile" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Arquivo</Label>
-                <MediaUpload value={d.fileUrl || ""} onChange={(url) => update({ fileUrl: url })} accept=".pdf,.doc,.docx,.xls,.xlsx,.csv,.txt" type="document" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Nome do arquivo</Label>
-                <Input value={d.fileName || ""} onChange={e => update({ fileName: e.target.value })} className="h-8 text-xs" placeholder="documento.pdf" />
-              </div>
-            </>
-          )}
-
-          {/* Condition */}
-          {d.type === "condition" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Campo</Label>
-                <Select value={d.conditionField || "message"} onValueChange={v => update({ conditionField: v })}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="message">Mensagem</SelectItem>
-                    <SelectItem value="contact_name">Nome do contato</SelectItem>
-                    <SelectItem value="phone">Telefone</SelectItem>
-                    <SelectItem value="tag">Tag</SelectItem>
-                    <SelectItem value="custom_field">Campo personalizado</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Operador</Label>
-                <Select value={d.conditionOperator || "contains"} onValueChange={v => update({ conditionOperator: v as FlowNodeData["conditionOperator"] })}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="equals">Igual a</SelectItem>
-                    <SelectItem value="contains">Contém</SelectItem>
-                    <SelectItem value="startsWith">Começa com</SelectItem>
-                    <SelectItem value="regex">Regex</SelectItem>
-                    <SelectItem value="has_tag">Tem tag</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Valor</Label>
-                <Input value={d.conditionValue || ""} onChange={e => update({ conditionValue: e.target.value })} className="h-8 text-xs" />
-              </div>
-            </>
-          )}
-
-          {/* waitDelay */}
-          {d.type === "waitDelay" && (
-            <>
-              <div className="space-y-3">
-                <Label className="text-xs">Tempo de espera (segundos)</Label>
-                <Slider value={[d.delaySeconds || 3]} onValueChange={([v]) => update({ delaySeconds: v })} min={1} max={300} step={1} />
-                <div className="flex justify-between text-[10px] text-muted-foreground">
-                  <span>1s</span>
-                  <span className="font-semibold text-foreground text-xs">
-                    {(() => {
-                      const s = d.delaySeconds || 3;
-                      if (s < 60) return `${s} segundo${s !== 1 ? "s" : ""}`;
-                      const m = Math.floor(s / 60);
-                      const rs = s % 60;
-                      return `${m}min${rs > 0 ? ` ${rs}s` : ""}`;
-                    })()}
-                  </span>
-                  <span>5min</span>
-                </div>
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Simular digitação</Label>
-                <Switch checked={d.simulateTyping ?? true} onCheckedChange={(v) => update({ simulateTyping: v })} />
-              </div>
-              {d.simulateTyping && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Tipo de presença</Label>
-                  <Select value={d.delayPresenceType || "typing"} onValueChange={v => update({ delayPresenceType: v as "typing" | "recording" })}>
-                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="typing">Digitando</SelectItem>
-                      <SelectItem value="recording">Gravando áudio</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              )}
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Delay aleatório</Label>
-                <Switch checked={d.delayRandomMode || false} onCheckedChange={(v) => update({ delayRandomMode: v })} />
-              </div>
-              {d.delayRandomMode && (
-                <div className="flex gap-2">
-                  <div className="space-y-1 flex-1">
-                    <Label className="text-xs">Mín (s)</Label>
-                    <Input type="number" value={d.delayMinSeconds ?? 1} onChange={e => update({ delayMinSeconds: Number(e.target.value) })} className="h-8 text-xs" min={1} />
-                  </div>
-                  <div className="space-y-1 flex-1">
-                    <Label className="text-xs">Máx (s)</Label>
-                    <Input type="number" value={d.delayMaxSeconds ?? 10} onChange={e => update({ delayMaxSeconds: Number(e.target.value) })} className="h-8 text-xs" min={1} />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-
-          {/* waitForReply */}
-          {d.type === "waitForReply" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Variável de resposta</Label>
-                <Input value={d.replyVariable || "reply"} onChange={e => update({ replyVariable: e.target.value })} className="h-8 text-xs" placeholder="reply" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Timeout</Label>
-                <div className="flex gap-2">
-                  <Input type="number" min={1} value={d.replyTimeout ?? 5} onChange={e => update({ replyTimeout: Math.max(1, Number(e.target.value)) })} className="h-8 text-xs w-20" />
-                  <Select value={d.replyTimeoutUnit || "minutes"} onValueChange={v => update({ replyTimeoutUnit: v as FlowNodeData["replyTimeoutUnit"] })}>
-                    <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="seconds">Segundos</SelectItem>
-                      <SelectItem value="minutes">Minutos</SelectItem>
-                      <SelectItem value="hours">Horas</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Mensagem de fallback</Label>
-                <Input value={d.replyFallback || ""} onChange={e => update({ replyFallback: e.target.value })} className="h-8 text-xs" placeholder="Não entendi, tente novamente..." />
-              </div>
-            </>
-          )}
-
-          {/* waitForClick */}
-          {d.type === "waitForClick" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">URL do link</Label>
-                <Input value={d.clickUrl || ""} onChange={e => update({ clickUrl: e.target.value })} className="h-8 text-xs" placeholder="https://..." />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Mensagem com link</Label>
-                <Textarea value={d.clickMessage || ""} onChange={e => update({ clickMessage: e.target.value })} rows={2} className="text-xs resize-none" placeholder="Clique no link abaixo..." />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Timeout</Label>
-                <div className="flex gap-2">
-                  <Input type="number" min={1} value={d.clickTimeout ?? 5} onChange={e => update({ clickTimeout: Math.max(1, Number(e.target.value)) })} className="h-8 text-xs w-20" />
-                  <Select value={d.clickTimeoutUnit || "minutes"} onValueChange={v => update({ clickTimeoutUnit: v as FlowNodeData["clickTimeoutUnit"] })}>
-                    <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="seconds">Segundos</SelectItem>
-                      <SelectItem value="minutes">Minutos</SelectItem>
-                      <SelectItem value="hours">Horas</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </>
-          )}
-
-          {/* Action */}
-          {d.type === "action" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Tipo de ação</Label>
-                <Select value={d.actionType || "assignAgent"} onValueChange={v => update({ actionType: v as FlowNodeData["actionType"] })}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    {Object.entries(actionTypeLabels).map(([k, v]) => (
-                      <SelectItem key={k} value={k}>{v}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              {d.actionType === "assignAgent" && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Departamento</Label>
-                  <Input value={d.department || ""} onChange={e => update({ department: e.target.value, actionValue: e.target.value })} className="h-8 text-xs" placeholder="Suporte, Vendas..." />
-                </div>
-              )}
-              {(d.actionType === "setTag" || d.actionType === "removeTag") && (
-                <div className="space-y-1">
-                  <Label className="text-xs">Nome da tag</Label>
-                  <Input value={d.tagName || ""} onChange={e => update({ tagName: e.target.value, actionValue: e.target.value })} className="h-8 text-xs" />
-                </div>
-              )}
-              {d.actionType === "httpRequest" && (
-                <>
-                  <div className="space-y-1">
-                    <Label className="text-xs">URL</Label>
-                    <Input value={d.httpUrl || ""} onChange={e => update({ httpUrl: e.target.value })} className="h-8 text-xs" placeholder="https://api.example.com" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Método</Label>
-                    <Select value={d.httpMethod || "POST"} onValueChange={v => update({ httpMethod: v as FlowNodeData["httpMethod"] })}>
-                      <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="GET">GET</SelectItem>
-                        <SelectItem value="POST">POST</SelectItem>
-                        <SelectItem value="PUT">PUT</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Headers (JSON)</Label>
-                    <Textarea value={d.httpHeaders || ""} onChange={e => update({ httpHeaders: e.target.value })} rows={2} className="text-xs font-mono resize-none" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Body (JSON)</Label>
-                    <Textarea value={d.httpBody || ""} onChange={e => update({ httpBody: e.target.value })} rows={3} className="text-xs font-mono resize-none" />
-                  </div>
-                </>
-              )}
-            </>
-          )}
-
-          {/* Randomizer */}
-          {d.type === "randomizer" && (
-            <div className="space-y-3">
-              <Label className="text-xs">Número de caminhos</Label>
-              <Slider value={[d.paths || 2]} onValueChange={([v]) => update({ paths: v })} min={2} max={6} step={1} />
-              <p className="text-center text-sm font-semibold text-foreground">{d.paths || 2} caminhos</p>
-            </div>
-          )}
-
-          {/* AI Agent */}
-          {d.type === "aiAgent" && (
-            <>
-              <div className="space-y-1">
-                <Label className="text-xs">Prompt do sistema</Label>
-                <Textarea value={d.aiSystemPrompt || ""} onChange={e => update({ aiSystemPrompt: e.target.value })} rows={4} className="text-xs resize-none" placeholder="Você é um assistente..." />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Modelo</Label>
-                <Select value={d.aiModel || "google/gemini-2.5-flash"} onValueChange={v => update({ aiModel: v })}>
-                  <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="google/gemini-2.5-flash">Gemini 2.5 Flash</SelectItem>
-                    <SelectItem value="google/gemini-2.5-flash-lite">Gemini 2.5 Flash Lite</SelectItem>
-                    <SelectItem value="google/gemini-2.5-pro">Gemini 2.5 Pro</SelectItem>
-                    <SelectItem value="openai/gpt-5-nano">GPT-5 Nano</SelectItem>
-                    <SelectItem value="openai/gpt-5-mini">GPT-5 Mini</SelectItem>
-                    <SelectItem value="openai/gpt-5">GPT-5</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label className="text-xs">Temperatura: {(d.aiTemperature ?? 0.7).toFixed(1)}</Label>
-                <Slider value={[d.aiTemperature ?? 0.7]} onValueChange={([v]) => update({ aiTemperature: parseFloat(v.toFixed(1)) })} min={0} max={2} step={0.1} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Max Tokens</Label>
-                <Input type="number" value={d.aiMaxTokens ?? 1024} onChange={e => update({ aiMaxTokens: Number(e.target.value) })} className="h-8 text-xs" min={64} max={8192} />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Histórico (mensagens)</Label>
-                <Input type="number" value={d.aiHistoryCount ?? 10} onChange={e => update({ aiHistoryCount: Number(e.target.value) })} className="h-8 text-xs" min={0} max={50} />
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="text-xs">Enviar automaticamente</Label>
-                <Switch checked={d.aiAutoSend ?? true} onCheckedChange={(v) => update({ aiAutoSend: v })} />
-              </div>
-            </>
-          )}
-
+      {/* Send Text */}
+      {d.type === "sendText" && (
+        <div className="space-y-1.5">
+          <Label className="text-xs">Mensagem</Label>
+          <TextFormatToolbar textareaRef={textareaRef} value={d.textContent || ""} onChange={(v) => update({ textContent: v })} />
+          <Textarea ref={textareaRef} value={d.textContent || ""} onChange={(e) => update({ textContent: e.target.value })} placeholder="Use *negrito*, _itálico_, ~riscado~" className="text-xs min-h-[100px] resize-none font-mono" />
+          <p className="text-[10px] text-muted-foreground">*negrito*, _itálico_, ~riscado~ · {"{{saudacao}}"} = Bom dia/Boa tarde/Boa noite</p>
         </div>
-      </ScrollArea>
+      )}
 
-      <div className="p-3 border-t">
-        <Button variant="destructive" size="sm" className="w-full h-8 text-xs" onClick={() => onDelete(node.id)}>
-          <Trash2 className="h-3 w-3 mr-1" />Excluir bloco
+      {/* Send Audio */}
+      {d.type === "sendAudio" && (
+        <>
+          <MediaUpload label="Áudio" value={d.audioUrl || ""} accept="audio/*" onChange={(url) => update({ audioUrl: url })} />
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Simular gravação</Label>
+            <Switch checked={d.simulateRecording || false} onCheckedChange={(v) => update({ simulateRecording: v })} />
+          </div>
+        </>
+      )}
+
+      {/* Send Image */}
+      {d.type === "sendImage" && (
+        <>
+          <MediaUpload label="Imagem" value={d.mediaUrl || ""} accept="image/*" onChange={(url) => update({ mediaUrl: url })} />
+          <div className="space-y-1.5">
+            <Label className="text-xs">Legenda</Label>
+            <Input value={d.caption || ""} onChange={(e) => update({ caption: e.target.value })} placeholder="Legenda opcional" className="h-8 text-xs" />
+          </div>
+        </>
+      )}
+
+      {/* Send Video */}
+      {d.type === "sendVideo" && (
+        <>
+          <MediaUpload label="Vídeo" value={d.mediaUrl || ""} accept="video/*" onChange={(url) => update({ mediaUrl: url })} />
+          <div className="space-y-1.5">
+            <Label className="text-xs">Legenda</Label>
+            <Input value={d.caption || ""} onChange={(e) => update({ caption: e.target.value })} placeholder="Legenda opcional" className="h-8 text-xs" />
+          </div>
+        </>
+      )}
+
+      {/* Send File */}
+      {d.type === "sendFile" && (
+        <>
+          <MediaUpload label="Documento PDF" value={d.fileUrl || ""} accept=".pdf,application/pdf" onChange={(url) => {
+            update({ fileUrl: url, fileName: d.fileName || "documento.pdf" });
+          }} />
+          {d.fileUrl && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nome do arquivo</Label>
+              <Input value={d.fileName || ""} onChange={(e) => update({ fileName: e.target.value })} placeholder="Ex: proposta.pdf" className="h-8 text-xs" />
+              <p className="text-[10px] text-muted-foreground">Nome exibido para o contato no WhatsApp</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Condition */}
+      {d.type === "condition" && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Operador</Label>
+            <Select value={d.conditionOperator || "contains"} onValueChange={(v) => update({ conditionOperator: v as any, ...(v === "has_tag" ? { conditionField: "tag" } : {}) })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="equals">É igual a</SelectItem>
+                <SelectItem value="contains">Contém</SelectItem>
+                <SelectItem value="starts_with">Começa com</SelectItem>
+                <SelectItem value="regex">Regex</SelectItem>
+                <SelectItem value="has_tag">Tem tag</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          {d.conditionOperator === "has_tag" ? (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Nome da tag</Label>
+              <Input value={d.conditionValue || ""} onChange={(e) => update({ conditionValue: e.target.value })} placeholder="Ex: passou-pelo-funil-principal" className="h-8 text-xs" />
+              <p className="text-[10px] text-muted-foreground">Verifica se o contato possui essa tag (adicionada via nó de Ação)</p>
+            </div>
+          ) : (
+            <>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Campo</Label>
+                <Input value={d.conditionField || ""} onChange={(e) => update({ conditionField: e.target.value })} placeholder="Ex: mensagem" className="h-8 text-xs" />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Valor</Label>
+                <Input value={d.conditionValue || ""} onChange={(e) => update({ conditionValue: e.target.value })} placeholder="Valor para comparar" className="h-8 text-xs" />
+              </div>
+            </>
+          )}
+        </>
+      )}
+
+      {/* Randomizer */}
+      {d.type === "randomizer" && (
+        <div className="space-y-1.5">
+          <Label className="text-xs">Número de caminhos</Label>
+          <Select value={String(d.paths || 2)} onValueChange={(v) => update({ paths: parseInt(v) })}>
+            <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {[2, 3, 4, 5].map((n) => <SelectItem key={n} value={String(n)}>{n} caminhos</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
+
+      {/* Wait/Delay */}
+      {d.type === "waitDelay" && (
+        <>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Modo aleatório</Label>
+            <Switch checked={d.delayRandomMode || false} onCheckedChange={(v) => update({ delayRandomMode: v })} />
+          </div>
+          {d.delayRandomMode ? (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Intervalo aleatório (segundos)</Label>
+              <div className="flex gap-2 items-center">
+                <Input type="number" value={d.delayMinSeconds || 0} onChange={(e) => update({ delayMinSeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} placeholder="Mín" />
+                <span className="text-xs text-muted-foreground">a</span>
+                <Input type="number" value={d.delayMaxSeconds || 0} onChange={(e) => update({ delayMaxSeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} placeholder="Máx" />
+              </div>
+              <p className="text-[10px] text-muted-foreground">O tempo será sorteado entre o mínimo e o máximo a cada execução</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Tempo de espera (segundos)</Label>
+              <Input type="number" value={d.delaySeconds || 0} onChange={(e) => update({ delaySeconds: parseInt(e.target.value) || 0 })} className="h-8 text-xs" min={0} />
+            </div>
+          )}
+          <div className="space-y-1.5">
+            <Label className="text-xs">Simulação de presença</Label>
+            <Select value={d.delayPresenceType || "none"} onValueChange={(v) => update({ delayPresenceType: v as any, simulateTyping: v !== "none" })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">Nenhuma</SelectItem>
+                <SelectItem value="composing">Digitando...</SelectItem>
+                <SelectItem value="recording">Gravando áudio...</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </>
+      )}
+
+      {/* Wait for Reply */}
+      {d.type === "waitForReply" && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Salvar resposta na variável</Label>
+            <Input value={d.replyVariable || ""} onChange={(e) => update({ replyVariable: e.target.value })} placeholder="Ex: resposta, nome" className="h-8 text-xs" />
+            <p className="text-[10px] text-muted-foreground">Acesse com {"{{resposta}}"}</p>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Timeout (se não responder)</Label>
+            <div className="flex gap-2">
+              <Input type="number" value={d.replyTimeout || 0} onChange={(e) => update({ replyTimeout: parseInt(e.target.value) || 0 })} className="h-8 text-xs flex-1" min={0} />
+              <Select value={d.replyTimeoutUnit || "minutes"} onValueChange={(v) => update({ replyTimeoutUnit: v as any })}>
+                <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="seconds">Segundos</SelectItem>
+                  <SelectItem value="minutes">Minutos</SelectItem>
+                  <SelectItem value="hours">Horas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-[10px] text-muted-foreground">0 = sem timeout. Quando ativo, o nó ganha uma saída extra "Se não respondeu" para conectar ao caminho alternativo.</p>
+          </div>
+        </>
+      )}
+
+      {/* Action */}
+      {d.type === "action" && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Tipo de ação</Label>
+            <Select value={d.actionType || "add_tag"} onValueChange={(v) => update({ actionType: v as any })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="add_tag">Adicionar Tag</SelectItem>
+                <SelectItem value="remove_tag">Remover Tag</SelectItem>
+                <SelectItem value="add_to_list">Adicionar à Lista</SelectItem>
+                <SelectItem value="set_variable">Definir Variável</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Valor</Label>
+            <Input value={d.actionValue || ""} onChange={(e) => update({ actionValue: e.target.value })} placeholder="Nome da tag, lista ou variável" className="h-8 text-xs" />
+          </div>
+        </>
+      )}
+
+      {/* AI Agent */}
+      {d.type === "aiAgent" && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Prompt do sistema</Label>
+            <Textarea value={d.aiSystemPrompt || ""} onChange={(e) => update({ aiSystemPrompt: e.target.value })} placeholder="Ex: Você é um atendente virtual da empresa X..." className="text-xs min-h-[100px] resize-none" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Modelo</Label>
+            <Select value={d.aiModel || "gpt-4o"} onValueChange={(v) => update({ aiModel: v as any })}>
+              <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="gpt-4o">GPT-4o</SelectItem>
+                <SelectItem value="gpt-4o-mini">GPT-4o Mini</SelectItem>
+                <SelectItem value="gpt-4-turbo">GPT-4 Turbo</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Tipos de mídia aceitos</Label>
+            <div className="grid grid-cols-2 gap-2">
+              {(["text", "audio", "image", "pdf"] as const).map((media) => {
+                const labels = { text: "Texto", audio: "Áudio", image: "Imagem", pdf: "PDF" };
+                const current = d.aiAcceptedMedia || ["text"];
+                return (
+                  <div key={media} className="flex items-center gap-2">
+                    <Checkbox
+                      id={`media-${media}`}
+                      checked={current.includes(media)}
+                      onCheckedChange={(checked) => {
+                        const updated = checked
+                          ? [...current, media]
+                          : current.filter((m) => m !== media);
+                        update({ aiAcceptedMedia: updated });
+                      }}
+                    />
+                    <Label htmlFor={`media-${media}`} className="text-xs">{labels[media]}</Label>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Salvar resposta na variável</Label>
+            <Input value={d.aiResponseVariable || "resposta_ia"} onChange={(e) => update({ aiResponseVariable: e.target.value })} placeholder="resposta_ia" className="h-8 text-xs" />
+          </div>
+          <div className="flex items-center justify-between">
+            <Label className="text-xs">Enviar resposta automaticamente</Label>
+            <Switch checked={d.aiAutoSend !== false} onCheckedChange={(v) => update({ aiAutoSend: v })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Temperatura: {d.aiTemperature ?? 0.7}</Label>
+            <Slider value={[d.aiTemperature ?? 0.7]} onValueChange={([v]) => update({ aiTemperature: v })} min={0} max={1} step={0.1} className="w-full" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Max tokens</Label>
+            <Input type="number" value={d.aiMaxTokens || 500} onChange={(e) => update({ aiMaxTokens: parseInt(e.target.value) || 500 })} className="h-8 text-xs" min={50} max={4000} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Histórico de mensagens</Label>
+            <Input type="number" value={d.aiHistoryCount || 10} onChange={(e) => update({ aiHistoryCount: parseInt(e.target.value) || 10 })} className="h-8 text-xs" min={0} max={50} />
+            <p className="text-[10px] text-muted-foreground">Quantas mensagens anteriores enviar como contexto</p>
+          </div>
+        </>
+      )}
+
+      {/* Wait for Click */}
+      {d.type === "waitForClick" && (
+        <>
+          <div className="space-y-1.5">
+            <Label className="text-xs">URL de destino</Label>
+            <Input value={d.clickUrl || ""} onChange={(e) => update({ clickUrl: e.target.value })} placeholder="https://mc.ht/s/XXXXXX" className="h-8 text-xs" />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Mensagem</Label>
+            <Textarea value={d.clickMessage || ""} onChange={(e) => update({ clickMessage: e.target.value })} placeholder="Clique no link: {{link}}" className="text-xs min-h-[80px] resize-none" />
+            <p className="text-[10px] text-muted-foreground">Use {"{{link}}"} onde o link rastreável será inserido</p>
+          </div>
+          <div className="border-t border-border pt-3 mt-3 space-y-3">
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-medium">Link Preview (WhatsApp)</p>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Título do preview</Label>
+              <Input value={d.clickPreviewTitle || ""} onChange={(e) => update({ clickPreviewTitle: e.target.value })} placeholder="Ex: Acesse seu material" className="h-8 text-xs" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs">Descrição do preview</Label>
+              <Input value={d.clickPreviewDescription || ""} onChange={(e) => update({ clickPreviewDescription: e.target.value })} placeholder="Ex: Clique para acessar o conteúdo exclusivo" className="h-8 text-xs" />
+            </div>
+            <MediaUpload label="Imagem do preview" value={d.clickPreviewImage || ""} accept="image/*" onChange={(url) => update({ clickPreviewImage: url })} />
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Timeout (se não clicar)</Label>
+            <div className="flex gap-2">
+              <Input type="number" value={d.clickTimeout || 0} onChange={(e) => update({ clickTimeout: parseInt(e.target.value) || 0 })} className="h-8 text-xs flex-1" min={0} />
+              <Select value={d.clickTimeoutUnit || "minutes"} onValueChange={(v) => update({ clickTimeoutUnit: v as any })}>
+                <SelectTrigger className="h-8 text-xs w-28"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="seconds">Segundos</SelectItem>
+                  <SelectItem value="minutes">Minutos</SelectItem>
+                  <SelectItem value="hours">Horas</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-[10px] text-muted-foreground">0 = sem timeout. Quando ativo, o nó ganha uma saída extra "Se não clicou" para conectar ao caminho alternativo.</p>
+          </div>
+        </>
+      )}
+    </>
+  );
+}
+
+export function PropertiesPanel({ node, selectedStepId, onSelectStep, onUpdate, onUpdateStep, onDelete, onRemoveStep, onClose }: PropertiesPanelProps) {
+  const d = node.data as FlowNodeData;
+  const isGroup = d.type === "groupBlock" && d.steps;
+
+  if (isGroup) {
+    const steps = d.steps || [];
+    const activeStep = selectedStepId ? steps.find((s) => s.id === selectedStepId) : null;
+
+    if (activeStep) {
+      const stepConfig = nodeTypeConfig[activeStep.data.type];
+      const StepIcon = stepConfig ? icons[stepConfig.icon as keyof typeof icons] : null;
+
+      return (
+        <div className="w-72 bg-card border-l border-border h-full overflow-y-auto">
+          <div className="flex items-center justify-between p-3 border-b border-border">
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onSelectStep?.(null)}>
+                <X className="h-3 w-3" />
+              </Button>
+              <div className="w-5 h-5 rounded flex items-center justify-center" style={{ backgroundColor: `${stepConfig?.color}22`, color: stepConfig?.color }}>
+                {StepIcon && <StepIcon className="w-3 h-3" />}
+              </div>
+              <h3 className="text-xs font-semibold">{stepConfig?.label}</h3>
+            </div>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+              <X className="h-4 w-4" />
+            </Button>
+          </div>
+          <div className="p-3 space-y-4">
+            <StepFields
+              d={activeStep.data}
+              update={(changes) => onUpdateStep?.(node.id, activeStep.id, changes)}
+            />
+            <div className="pt-4 border-t border-border space-y-2">
+              <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => onRemoveStep?.(node.id, activeStep.id)}>
+                <Unlink className="h-3 w-3 mr-1" /> Desagrupar Step
+              </Button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="w-72 bg-card border-l border-border h-full overflow-y-auto">
+        <div className="flex items-center justify-between p-3 border-b border-border">
+          <h3 className="text-sm font-semibold">Grupo ({steps.length} steps)</h3>
+          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+            <X className="h-4 w-4" />
+          </Button>
+        </div>
+        <div className="p-3 space-y-1">
+          <p className="text-[10px] text-muted-foreground uppercase tracking-wider mb-2">Clique para editar</p>
+          {steps.map((step) => {
+            const stepConfig = nodeTypeConfig[step.data.type];
+            const StepIcon = stepConfig ? icons[stepConfig.icon as keyof typeof icons] : null;
+            return (
+              <button
+                key={step.id}
+                className="flex items-center gap-2 w-full p-2 rounded-lg hover:bg-secondary transition-colors text-left"
+                onClick={() => onSelectStep?.(step.id)}
+              >
+                <div className="w-1 h-8 rounded-full flex-shrink-0" style={{ backgroundColor: stepConfig?.color }} />
+                <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: `${stepConfig?.color}22`, color: stepConfig?.color }}>
+                  {StepIcon && <StepIcon className="w-3 h-3" />}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-medium truncate">{step.data.label || stepConfig?.label}</p>
+                  <p className="text-[10px] text-muted-foreground truncate">{stepConfig?.description}</p>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+        <div className="p-3 border-t border-border">
+          <Button variant="destructive" size="sm" className="w-full text-xs" onClick={() => onDelete(node.id)}>
+            <Trash2 className="h-3 w-3 mr-1" /> Excluir Grupo
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  const config = nodeTypeConfig[d.type];
+  const LucideIcon = icons[config.icon as keyof typeof icons];
+
+  return (
+    <div className="w-72 bg-card border-l border-border h-full overflow-y-auto">
+      <div className="flex items-center justify-between p-3 border-b border-border">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded flex items-center justify-center" style={{ backgroundColor: `${config.color}22`, color: config.color }}>
+            {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
+          </div>
+          <h3 className="text-sm font-semibold">{config.label}</h3>
+        </div>
+        <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
+          <X className="h-4 w-4" />
         </Button>
+      </div>
+      <div className="p-3 space-y-4">
+        <StepFields d={d} update={(changes) => onUpdate(node.id, changes)} />
+        <div className="pt-4 border-t border-border">
+          <Button variant="destructive" size="sm" className="w-full text-xs" onClick={() => onDelete(node.id)}>
+            <Trash2 className="h-3 w-3 mr-1" /> Excluir Nó
+          </Button>
+        </div>
       </div>
     </div>
   );
 }
+
+export default PropertiesPanel;

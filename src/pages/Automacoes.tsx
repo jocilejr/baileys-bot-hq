@@ -8,7 +8,7 @@ import { useAutomations, useCreateAutomation, useToggleAutomation, useUpdateAuto
 import { Skeleton } from "@/components/ui/skeleton";
 import FlowEditor from "@/components/chatbot/FlowEditor";
 import type { FlowNode, FlowEdge } from "@/types/chatbot";
-import { getDefaultNodeData } from "@/types/chatbot";
+import { defaultNodeData } from "@/types/chatbot";
 import { toast } from "sonner";
 
 const triggerLabels: Record<string, string> = {
@@ -33,9 +33,9 @@ const Automacoes = () => {
       const defaultNodes: FlowNode[] = [
         {
           id: "node_trigger",
-          type: "stepNode",
+          type: "step",
           position: { x: 300, y: 50 },
-          data: getDefaultNodeData("trigger") as any,
+          data: { type: "trigger", label: "Gatilho", ...defaultNodeData.trigger } as any,
         },
       ];
       const result = await createAutomation.mutateAsync({
@@ -70,14 +70,16 @@ const Automacoes = () => {
     const initialEdges = Array.isArray(editingFlow.edges) ? (editingFlow.edges as unknown as FlowEdge[]) : [];
 
     return (
-      <FlowEditor
-        flowId={editingFlow.id}
-        flowName={editingFlow.name}
-        initialNodes={initialNodes}
-        initialEdges={initialEdges}
-        onSave={handleSave}
-        onBack={() => setEditingFlowId(null)}
-      />
+      <div className="h-[calc(100vh-4rem)]">
+        <FlowEditor
+          flowId={editingFlow.id}
+          flowName={editingFlow.name}
+          initialNodes={initialNodes}
+          initialEdges={initialEdges}
+          onSave={handleSave}
+          onBack={() => setEditingFlowId(null)}
+        />
+      </div>
     );
   }
 
