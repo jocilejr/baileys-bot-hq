@@ -128,7 +128,7 @@ function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
   return (
     <div className="relative group/node">
       <div
-        className="absolute -top-10 left-1/2 -translate-x-1/2 z-50 flex items-center gap-0.5 bg-card border border-border rounded-lg shadow-lg p-1 opacity-0 group-hover/node:opacity-100 transition-opacity nopan nodrag"
+        className="absolute -top-10 left-1/2 -translate-x-1/2 z-50 flex items-center gap-0.5 bg-card/95 backdrop-blur-sm border border-border/60 rounded-lg shadow-[0_4px_20px_rgba(0,0,0,0.4)] p-1 opacity-0 group-hover/node:opacity-100 transition-opacity nopan nodrag"
         onMouseDown={(e) => e.stopPropagation()}
         onPointerDown={(e) => e.stopPropagation()}
       >
@@ -150,14 +150,14 @@ function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
       <div
         className={`w-[260px] rounded-xl overflow-hidden transition-all duration-200 bg-card border ${
           isDockTarget
-            ? "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]"
+            ? "border-blue-500 shadow-[0_0_24px_rgba(59,130,246,0.25)]"
             : selected
-            ? "border-primary/40 shadow-xl"
-            : "border-border shadow-md hover:shadow-lg"
+            ? "border-primary/40 shadow-[0_8px_32px_rgba(0,0,0,0.45)]"
+            : "border-border/60 shadow-[0_4px_24px_rgba(0,0,0,0.35)] hover:shadow-[0_8px_32px_rgba(0,0,0,0.45)] hover:border-border"
         }`}
       >
         <div
-          className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border/50"
+          className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border/40 bg-secondary/30"
           style={{ borderTop: `3px solid ${accentColor}` }}
         >
           <div

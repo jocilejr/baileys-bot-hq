@@ -30,9 +30,9 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
   ];
 
   return (
-    <div className="w-56 bg-card border-r border-border h-full overflow-y-auto">
-      <div className="p-3 border-b border-border">
-        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+    <div className="w-56 bg-sidebar-background border-r border-sidebar-border h-full overflow-y-auto">
+      <div className="p-3 border-b border-sidebar-border">
+        <h3 className="text-xs font-semibold text-muted-foreground/70 uppercase tracking-wider">
           Componentes
         </h3>
       </div>
@@ -54,7 +54,7 @@ export function NodePalette({ onDragStart }: NodePaletteProps) {
                       e.dataTransfer.effectAllowed = "move";
                       onDragStart(type);
                     }}
-                    className="flex items-center gap-2 p-2 rounded-lg cursor-grab hover:bg-secondary active:cursor-grabbing transition-colors group"
+                    className="flex items-center gap-2 p-2 rounded-lg cursor-grab hover:bg-secondary/60 active:cursor-grabbing transition-colors group"
                   >
                     <div
                       className="flex items-center justify-center w-8 h-8 rounded-lg"

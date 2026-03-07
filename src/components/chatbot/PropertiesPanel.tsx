@@ -375,8 +375,8 @@ export function PropertiesPanel({ node, selectedStepId, onSelectStep, onUpdate, 
       const StepIcon = stepConfig ? icons[stepConfig.icon as keyof typeof icons] : null;
 
       return (
-        <div className="w-72 bg-card border-l border-border h-full overflow-y-auto">
-          <div className="flex items-center justify-between p-3 border-b border-border">
+        <div className="w-72 bg-sidebar-background border-l border-sidebar-border h-full overflow-y-auto">
+          <div className="flex items-center justify-between p-3 border-b border-sidebar-border">
             <div className="flex items-center gap-2">
               <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => onSelectStep?.(null)}>
                 <X className="h-3 w-3" />
@@ -406,8 +406,8 @@ export function PropertiesPanel({ node, selectedStepId, onSelectStep, onUpdate, 
     }
 
     return (
-      <div className="w-72 bg-card border-l border-border h-full overflow-y-auto">
-        <div className="flex items-center justify-between p-3 border-b border-border">
+      <div className="w-72 bg-sidebar-background border-l border-sidebar-border h-full overflow-y-auto">
+        <div className="flex items-center justify-between p-3 border-b border-sidebar-border">
           <h3 className="text-sm font-semibold">Grupo ({steps.length} steps)</h3>
           <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -449,8 +449,8 @@ export function PropertiesPanel({ node, selectedStepId, onSelectStep, onUpdate, 
   const LucideIcon = icons[config.icon as keyof typeof icons];
 
   return (
-    <div className="w-72 bg-card border-l border-border h-full overflow-y-auto">
-      <div className="flex items-center justify-between p-3 border-b border-border">
+    <div className="w-72 bg-sidebar-background border-l border-sidebar-border h-full overflow-y-auto">
+      <div className="flex items-center justify-between p-3 border-b border-sidebar-border">
         <div className="flex items-center gap-2">
           <div className="w-6 h-6 rounded flex items-center justify-center" style={{ backgroundColor: `${config.color}22`, color: config.color }}>
             {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
