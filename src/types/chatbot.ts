@@ -153,6 +153,10 @@ export function getDefaultNodeData(type: FlowNodeType): FlowNodeData {
       return { ...base, httpUrl: "", httpMethod: "POST", httpBody: "", httpHeaders: "" };
     case "aiResponse":
       return { ...base, aiPrompt: "", aiModel: "google/gemini-2.5-flash", aiTemperature: 0.7, aiMaxTokens: 1024 };
+    case "waitMessage":
+      return base;
+    case "waitClick":
+      return { ...base, httpUrl: "" };
     default:
       return base;
   }
