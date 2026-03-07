@@ -1,304 +1,344 @@
-import { memo, type FC } from "react";
-import { Handle, Position, type NodeProps } from "@xyflow/react";
-import type { FlowNodeData } from "@/types/chatbot";
-import { nodeTypeConfig, parseWhatsAppFormatting, formatDelay, operatorLabels, triggerTypeLabels, actionTypeLabels, FINALIZER_TYPES } from "@/types/chatbot";
-import {
-  Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
-  GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Cog, Shuffle,
-  MessageCircle, MousePointerClick,
-} from "lucide-react";
-import { cn } from "@/lib/utils";
+import { memo } from "react";
+import { Handle, Position } from "@xyflow/react";
+import { icons, Clock, Copy, Trash2 } from "lucide-react";
+import { nodeTypeConfig, type FlowNodeData, parseWhatsAppFormatting } from "@/types/chatbot";
 
-const iconMap: Record<string, FC<{ className?: string }>> = {
-  Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
-  GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Cog, Shuffle,
-  MessageCircle, MousePointerClick,
-};
+interface StepNodeProps {
+  id: string;
+  data: Record<string, unknown>;
+  selected?: boolean;
+}
 
-/* ──────── Node Preview ──────── */
-function NodePreview({ data }: { data: FlowNodeData }) {
-  switch (data.type) {
+function renderDescription(d: FlowNodeData): React.ReactNode {
+  switch (d.type) {
     case "trigger":
+      return d.triggerType === "keyword"
+        ? `Palavra-chave: "${d.triggerKeyword || "..."}"`
+        : d.triggerType === "any_message"
+        ? "Qualquer mensagem"
+        : "Evento específico";
+    case "sendText": {
+      const text = d.textContent || "Mensagem vazia...";
       return (
-        <div className="space-y-1">
-          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
-            {triggerTypeLabels[data.triggerType || "keyword"]}
-          </span>
-          {data.triggerValue && <p className="text-[11px] text-muted-foreground truncate">"{data.triggerValue}"</p>}
-        </div>
+        <span
+          dangerouslySetInnerHTML={{ __html: parseWhatsAppFormatting(text) }}
+          className="whitespace-pre-wrap"
+        />
       );
-
-    case "sendText":
-      return data.textContent ? (
-        <p className="text-[11px] text-muted-foreground leading-relaxed line-clamp-3"
-          dangerouslySetInnerHTML={{ __html: parseWhatsAppFormatting(data.textContent.substring(0, 120)) }} />
-      ) : (
-        <p className="text-[11px] text-muted-foreground/50 italic">Mensagem vazia</p>
-      );
-
-    case "sendImage":
-      return (
-        <div className="space-y-1">
-          {data.mediaUrl ? (
-            <div className="w-full h-16 rounded bg-muted overflow-hidden">
-              <img src={data.mediaUrl} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-            </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-muted-foreground/50">
-              <Image className="h-8 w-8" /><span className="text-[10px] italic">Sem imagem</span>
-            </div>
-          )}
-          {data.caption && <p className="text-[10px] text-muted-foreground truncate">{data.caption}</p>}
-        </div>
-      );
-
+    }
     case "sendAudio":
-      return (
-        <div className="flex items-center gap-2 py-1">
-          <Mic className="h-4 w-4 text-muted-foreground" />
-          <div className="flex items-center gap-0.5">
-            {[3, 5, 8, 4, 7, 3, 6, 4, 5, 3].map((h, i) => (
-              <div key={i} className="w-1 rounded-full bg-primary/60" style={{ height: `${h * 2}px` }} />
-            ))}
-          </div>
-          <span className="text-[10px] text-muted-foreground">{data.audioUrl ? "Áudio" : "Sem áudio"}</span>
-        </div>
-      );
-
+      return (d.audioUrl ? "Áudio carregado" : "Sem áudio") +
+        (d.simulateRecording ? " · Gravando" : "");
     case "sendVideo":
-      return (
-        <div className="flex items-center gap-1.5 text-muted-foreground/60">
-          <Video className="h-6 w-6" />
-          <span className="text-[10px]">{data.mediaUrl ? "Vídeo anexado" : "Sem vídeo"}</span>
-        </div>
-      );
-
+    case "sendImage":
+      return d.mediaUrl ? "Mídia carregada" : "Sem mídia";
     case "sendFile":
-      return (
-        <div className="flex items-center gap-1.5 text-muted-foreground/60">
-          <FileText className="h-5 w-5" />
-          <span className="text-[10px] truncate">{data.fileName || data.fileUrl?.split("/").pop() || "Sem arquivo"}</span>
-        </div>
-      );
-
-    case "sendButtons":
-      return (
-        <div className="space-y-1.5">
-          {data.textContent && (
-            <p className="text-[11px] text-muted-foreground line-clamp-2"
-              dangerouslySetInnerHTML={{ __html: parseWhatsAppFormatting(data.textContent.substring(0, 80)) }} />
-          )}
-          <div className="flex flex-wrap gap-1">
-            {(data.buttons || []).map((btn) => (
-              <span key={btn.id} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/15 text-primary border border-primary/20">{btn.text}</span>
-            ))}
-          </div>
-        </div>
-      );
-
-    case "sendList":
-      return (
-        <div className="space-y-1">
-          {data.textContent && <p className="text-[11px] text-muted-foreground truncate">{data.textContent}</p>}
-          {(data.listSections || []).map((sec, i) => (
-            <div key={i} className="pl-1.5 border-l-2 border-primary/30">
-              <p className="text-[10px] font-medium text-foreground/80">{sec.title}</p>
-              {sec.rows.slice(0, 2).map((row) => (
-                <p key={row.id} className="text-[10px] text-muted-foreground">• {row.title}</p>
-              ))}
-              {sec.rows.length > 2 && <p className="text-[10px] text-muted-foreground/50">+{sec.rows.length - 2} mais</p>}
-            </div>
-          ))}
-        </div>
-      );
-
-    case "condition":
-      return (
-        <div className="space-y-1">
-          <p className="text-[11px] text-muted-foreground">
-            <span className="font-medium text-foreground/80">{data.conditionField || "mensagem"}</span>{" "}
-            <span className="text-primary">{operatorLabels[data.conditionOperator || "contains"]}</span>{" "}
-            "{data.conditionValue || "..."}"
-          </p>
-          <div className="flex gap-2 text-[10px]">
-            <span className="text-emerald-400">✓ Sim</span>
-            <span className="text-red-400">✗ Não</span>
-          </div>
-        </div>
-      );
-
-    case "waitDelay":
-      return (
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-mono font-semibold text-foreground/80">{formatDelay(data.delaySeconds || 3)}</span>
-          {data.simulateTyping && <span className="text-[10px] text-muted-foreground">· digitando...</span>}
-        </div>
-      );
-
-    case "action":
-      return (
-        <div className="flex items-center gap-1.5">
-          <span className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-500/15 text-orange-400">
-            {actionTypeLabels[data.actionType || "assignAgent"]}
-          </span>
-          {data.actionValue && <span className="text-[10px] text-muted-foreground truncate">{data.actionValue}</span>}
-        </div>
-      );
-
+      return d.fileUrl ? (d.fileName || "Arquivo carregado") : "Sem arquivo";
+    case "condition": {
+      if (d.conditionOperator === "has_tag") {
+        return `Tag: "${d.conditionValue || "..."}"`;
+      }
+      return `Se ${d.conditionField || "campo"} ${d.conditionOperator || "contém"} "${d.conditionValue || "..."}"`;
+    }
     case "randomizer":
-      return (
-        <div className="flex items-center gap-1.5">
-          <Shuffle className="h-4 w-4 text-muted-foreground" />
-          <span className="text-[11px] text-muted-foreground">{data.paths || 2} caminhos</span>
-        </div>
-      );
-
-    case "waitForReply": {
-      const unit = data.replyTimeoutUnit === "hours" ? "h" : data.replyTimeoutUnit === "seconds" ? "s" : "min";
-      return (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <MessageCircle className="h-4 w-4 text-muted-foreground" />
-            <span className="text-[11px] text-muted-foreground font-medium">Aguardando resposta...</span>
-          </div>
-          <p className="text-[10px] text-muted-foreground/70">Timeout: {data.replyTimeout || 5}{unit}</p>
-        </div>
-      );
+      return `${d.paths || 2} caminhos`;
+    case "waitDelay":
+      return `Aguardar ${d.delaySeconds || 0}s${d.delayPresenceType === "recording" ? " · gravando..." : d.delayPresenceType === "composing" ? " · digitando..." : ""}`;
+    case "waitForReply":
+      return `Salvar em {{${d.replyVariable || "resposta"}}}${d.replyTimeout ? ` · ${d.replyTimeout}s` : ""}`;
+    case "action":
+      return d.actionType === "add_tag"
+        ? `Tag: ${d.actionValue || "..."}`
+        : d.actionType === "remove_tag"
+        ? `Remover: ${d.actionValue || "..."}`
+        : d.actionType === "add_to_list"
+        ? `Lista: ${d.actionValue || "..."}`
+        : d.actionType === "set_variable"
+        ? `Var: ${d.actionValue || "..."}`
+        : "Sem ação";
+    case "aiAgent": {
+      const model = d.aiModel || "gpt-4o";
+      const prompt = d.aiSystemPrompt ? d.aiSystemPrompt.substring(0, 40) + (d.aiSystemPrompt.length > 40 ? "..." : "") : "Sem prompt";
+      return `${model} · ${prompt}`;
     }
-
-    case "waitForClick": {
-      const unit = data.clickTimeoutUnit === "hours" ? "h" : data.clickTimeoutUnit === "seconds" ? "s" : "min";
-      return (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <MousePointerClick className="h-4 w-4 text-muted-foreground" />
-            <span className="text-[11px] text-muted-foreground font-medium">Aguardando clique</span>
-          </div>
-          <p className="text-[10px] text-muted-foreground/70">Timeout: {data.clickTimeout || 5}{unit}</p>
-        </div>
-      );
-    }
-
-    case "aiAgent":
-      return (
-        <div className="space-y-1">
-          <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-500/15 text-purple-400">
-            {(data.aiModel || "gemini-2.5-flash").split("/").pop()}
-          </span>
-          {data.aiSystemPrompt && <p className="text-[10px] text-muted-foreground line-clamp-2">{data.aiSystemPrompt.substring(0, 80)}</p>}
-        </div>
-      );
-
+    case "waitForClick":
+      return d.clickUrl ? d.clickUrl : "URL não definida";
     default:
-      return <p className="text-[11px] text-muted-foreground">{(nodeTypeConfig as any)[data.type]?.description || String(data.type)}</p>;
+      return "";
   }
 }
 
-/* ──────── Step Node ──────── */
-const StepNode = ({ data, selected }: NodeProps) => {
-  const nodeData = data as unknown as FlowNodeData;
-  const config = nodeTypeConfig[nodeData.type];
-  if (!config) return null;
-  const Icon = iconMap[config.icon] || Zap;
+function StepNode({ id: nodeId, data, selected }: StepNodeProps) {
+  const d = data as FlowNodeData;
+  const config = nodeTypeConfig[d.type];
+  const LucideIcon = icons[config.icon as keyof typeof icons];
+  const isTrigger = d.type === "trigger";
+  const hasMultipleOutputs = d.type === "condition" || d.type === "randomizer";
+  const pathCount = d.type === "randomizer" ? (d.paths || 2) : 2;
+  const isDockTarget = d.isDockTarget === true;
+  const accentColor = config.color;
 
-  const isCondition = nodeData.type === "condition";
-  const isRandomizer = nodeData.type === "randomizer";
-  const hasButtons = nodeData.type === "sendButtons" && (nodeData.buttons?.length || 0) > 0;
-  const isFinisher = FINALIZER_TYPES.includes(nodeData.type);
-  const isTrigger = nodeData.type === "trigger";
+  const hasTimeoutOutputs =
+    (d.type === "waitForReply" && (d.replyTimeout || 0) > 0) ||
+    (d.type === "waitForClick" && (d.clickTimeout || 0) > 0);
+  const timeoutLabel =
+    d.type === "waitForReply" ? "Se não respondeu" : "Se não clicou";
+
+  const dispatchDuplicate = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent("node-duplicate", { detail: { nodeId }, bubbles: true }));
+  };
+
+  const dispatchDelete = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    document.dispatchEvent(new CustomEvent("node-delete", { detail: { nodeId }, bubbles: true }));
+  };
+
+  if (isTrigger) {
+    return (
+      <div className="relative">
+        <div
+          className={`w-[260px] rounded-xl overflow-hidden transition-all duration-200 ${
+            selected ? "shadow-xl ring-2 ring-primary/30" : "shadow-md hover:shadow-lg"
+          }`}
+          style={{ background: `linear-gradient(135deg, ${accentColor}, ${accentColor}dd)` }}
+        >
+          <div className="flex items-center gap-2.5 px-3 py-2.5">
+            <div className="w-7 h-7 rounded-lg bg-white/20 backdrop-blur-sm flex items-center justify-center flex-shrink-0">
+              {LucideIcon && <LucideIcon className="w-3.5 h-3.5 text-white" />}
+            </div>
+            <span className="text-[13px] font-semibold text-white tracking-wide">{d.label || "Gatilho"}</span>
+          </div>
+          <div className="px-3 py-2.5 bg-black/10 backdrop-blur-sm">
+            <p className="text-[12px] text-white/80 font-medium">{renderDescription(d)}</p>
+          </div>
+        </div>
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+          style={{ background: accentColor }}
+        />
+      </div>
+    );
+  }
 
   return (
-    <div
-      className={cn(
-        "relative min-w-[220px] max-w-[280px] rounded-lg border bg-card transition-all duration-150",
-        selected
-          ? "ring-1 ring-primary/60 shadow-md border-primary/40"
-          : "shadow-sm border-border/40 hover:shadow-md hover:border-border/60",
-        nodeData.isDockTarget && "ring-2 ring-blue-400 border-blue-400/50"
-      )}
-    >
-      {/* Target handle */}
-      {!isTrigger && (
-        <Handle type="target" position={Position.Left}
-          className="!w-3.5 !h-3.5 !bg-muted-foreground/50 !border-2 !border-card !rounded-full !top-1/2 !-translate-y-1/2" />
-      )}
-
-      {/* Header */}
-      {isTrigger ? (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-white/90 text-[11px] font-semibold tracking-wide uppercase"
-          style={{ background: `linear-gradient(135deg, ${config.color}, hsl(142 40% 35%))` }}>
-          <Icon className="h-3 w-3 opacity-80" />
-          <span className="truncate">{nodeData.label || config.label}</span>
-        </div>
-      ) : (
-        <div className="flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-white/90 text-[11px] font-semibold tracking-wide uppercase"
-          style={{ borderTop: `3px solid ${config.color}` }}>
-          <div className="w-5 h-5 rounded flex items-center justify-center" style={{ backgroundColor: config.color }}>
-            <Icon className="h-3 w-3 text-white" />
-          </div>
-          <span className="truncate text-foreground/80">{nodeData.label || config.label}</span>
-        </div>
-      )}
-
-      {/* Body */}
-      <div className="px-3 py-2.5">
-        <NodePreview data={nodeData} />
+    <div className="relative group/node">
+      <div
+        className="absolute -top-10 left-1/2 -translate-x-1/2 z-50 flex items-center gap-0.5 bg-card border border-border rounded-lg shadow-lg p-1 opacity-0 group-hover/node:opacity-100 transition-opacity nopan nodrag"
+        onMouseDown={(e) => e.stopPropagation()}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
+        <button onClick={dispatchDuplicate} className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-secondary transition-colors" title="Duplicar">
+          <Copy className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+        <button onClick={dispatchDelete} className="w-7 h-7 rounded-md flex items-center justify-center hover:bg-destructive/15 transition-colors" title="Apagar">
+          <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+        </button>
       </div>
 
-      {/* Source handles */}
-      {isCondition ? (
-        <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center gap-5 -mr-1 pointer-events-none">
-          <div className="flex items-center gap-1.5 pointer-events-auto">
-            <span className="text-[9px] font-semibold text-emerald-500/80">Sim</span>
-            <Handle type="source" position={Position.Right} id="output-0"
-              className="!relative !transform-none !top-auto !left-auto !w-3.5 !h-3.5 !bg-emerald-500 !border-2 !border-card !rounded-full" />
+      <Handle
+        type="target"
+        position={Position.Left}
+        className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+        style={{ background: accentColor }}
+      />
+
+      <div
+        className={`w-[260px] rounded-xl overflow-hidden transition-all duration-200 bg-card border ${
+          isDockTarget
+            ? "border-blue-500 shadow-[0_0_20px_rgba(59,130,246,0.3)]"
+            : selected
+            ? "border-primary/40 shadow-xl"
+            : "border-border shadow-md hover:shadow-lg"
+        }`}
+      >
+        <div
+          className="flex items-center gap-2.5 px-3 py-2.5 border-b border-border/50"
+          style={{ borderTop: `3px solid ${accentColor}` }}
+        >
+          <div
+            className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
+          >
+            {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
           </div>
-          <div className="flex items-center gap-1.5 pointer-events-auto">
-            <span className="text-[9px] font-semibold text-red-400/80">Não</span>
-            <Handle type="source" position={Position.Right} id="output-1"
-              className="!relative !transform-none !top-auto !left-auto !w-3.5 !h-3.5 !bg-red-400 !border-2 !border-card !rounded-full" />
-          </div>
+          <p className="text-[13px] font-semibold text-foreground flex-1 truncate">
+            {d.label || config.label}
+          </p>
         </div>
-      ) : isFinisher ? (
-        <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center gap-5 -mr-1 pointer-events-none">
-          <div className="flex items-center gap-1.5 pointer-events-auto">
-            <span className="text-[9px] font-semibold text-emerald-500/80">Continuou ✓</span>
-            <Handle type="source" position={Position.Right} id="output-0"
-              className="!relative !transform-none !top-auto !left-auto !w-3.5 !h-3.5 !bg-emerald-500 !border-2 !border-card !rounded-full" />
-          </div>
-          <div className="flex items-center gap-1.5 pointer-events-auto">
-            <span className="text-[9px] font-semibold text-orange-400/80">Não respondeu ⏱</span>
-            <Handle type="source" position={Position.Right} id="output-1"
-              className="!relative !transform-none !top-auto !left-auto !w-3.5 !h-3.5 !bg-orange-400 !border-2 !border-card !rounded-full" />
-          </div>
-        </div>
-      ) : isRandomizer ? (
-        <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center -mr-1 pointer-events-none" style={{ gap: "6px" }}>
-          {Array.from({ length: nodeData.paths || 2 }).map((_, i) => (
-            <div key={i} className="flex items-center gap-1.5 pointer-events-auto">
-              <span className="text-[8px] font-medium text-muted-foreground/70">#{i + 1}</span>
-              <Handle type="source" position={Position.Right} id={`output-${i}`}
-                className="!relative !transform-none !top-auto !left-auto !w-3 !h-3 !bg-primary/70 !border-2 !border-card !rounded-full" />
+
+        <div className="px-3 py-2.5">
+        {d.type === "condition" ? (
+            <div className="space-y-2">
+              {d.conditionOperator === "has_tag" ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-purple-500/10 text-[11px] font-semibold text-purple-400 border border-purple-500/20">
+                    🏷️ Tem tag
+                  </span>
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-foreground/5 text-[11px] font-medium text-foreground/70 border border-border/40">
+                    "{d.conditionValue || "..."}"
+                  </span>
+                </div>
+              ) : d.conditionField && d.conditionValue ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-red-500/10 text-[11px] font-semibold text-red-400 border border-red-500/20">
+                    {d.conditionField}
+                  </span>
+                  <span className="text-[10px] text-muted-foreground font-medium">
+                    {d.conditionOperator === "equals" ? "=" : d.conditionOperator === "starts_with" ? "começa com" : d.conditionOperator === "regex" ? "regex" : "contém"}
+                  </span>
+                  <span className="inline-flex items-center px-2 py-1 rounded-md bg-foreground/5 text-[11px] font-medium text-foreground/70 border border-border/40">
+                    "{d.conditionValue}"
+                  </span>
+                </div>
+              ) : (
+                <p className="text-[11px] text-muted-foreground/60 italic px-1">Configurar condição...</p>
+              )}
             </div>
-          ))}
-        </div>
-      ) : hasButtons ? (
-        <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center -mr-1 pointer-events-none" style={{ gap: "6px" }}>
-          {(nodeData.buttons || []).map((btn) => (
-            <div key={btn.id} className="flex items-center gap-1.5 pointer-events-auto">
-              <span className="text-[8px] font-medium text-muted-foreground/70 max-w-[60px] truncate">{btn.text}</span>
-              <Handle type="source" position={Position.Right} id={`btn_${btn.id}`}
-                className="!relative !transform-none !top-auto !left-auto !w-3 !h-3 !bg-primary/70 !border-2 !border-card !rounded-full" />
+          ) : d.type === "action" ? (() => {
+            const actionLabels: Record<string, { label: string; color: string }> = {
+              add_tag: { label: "Tag", color: "#f97316" },
+              remove_tag: { label: "Remover Tag", color: "#ef4444" },
+              add_to_list: { label: "Lista", color: "#3b82f6" },
+              set_variable: { label: "Variável", color: "#8b5cf6" },
+            };
+            const info = actionLabels[d.actionType || "add_tag"] || actionLabels.add_tag;
+            return (
+              <div className="flex items-center gap-2">
+                <span
+                  className="inline-flex items-center px-2 py-1 rounded-md text-[11px] font-semibold border"
+                  style={{ backgroundColor: `${info.color}15`, color: info.color, borderColor: `${info.color}30` }}
+                >
+                  {info.label}
+                </span>
+                {d.actionValue ? (
+                  <span className="text-[12px] text-foreground/70 font-medium truncate">{d.actionValue}</span>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground/60 italic">Sem valor</span>
+                )}
+              </div>
+            );
+          })() : (
+            <div className="flex items-center gap-3 px-3 py-2.5 rounded-lg bg-secondary/50">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                style={{ backgroundColor: `${accentColor}18`, color: accentColor }}
+              >
+                {LucideIcon && <LucideIcon className="w-3.5 h-3.5" />}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="text-[12px] font-medium text-foreground truncate">{d.label || config.label}</p>
+                <p className="text-[10px] text-muted-foreground truncate">{renderDescription(d)}</p>
+              </div>
             </div>
-          ))}
+          )}
         </div>
+
+        {hasTimeoutOutputs && (
+          <div className="px-3 pb-2.5 flex items-center gap-1.5">
+            <Clock className="w-3 h-3 text-orange-500" />
+            <span className="text-[10px] text-orange-500 font-medium">
+              Timeout: {d.type === "waitForReply" ? d.replyTimeout : d.clickTimeout}
+              {(d.type === "waitForReply" ? d.replyTimeoutUnit : d.clickTimeoutUnit) === "seconds" ? "s" :
+               (d.type === "waitForReply" ? d.replyTimeoutUnit : d.clickTimeoutUnit) === "hours" ? "h" : "min"}
+            </span>
+          </div>
+        )}
+
+        {isDockTarget && (
+          <div className="px-3 py-2 bg-blue-500/10 border-t border-blue-500/30">
+            <p className="text-[11px] text-blue-500 text-center font-medium animate-pulse">
+              Solte para acoplar
+            </p>
+          </div>
+        )}
+      </div>
+
+      {hasMultipleOutputs ? (
+        d.type === "condition" ? (
+          <>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="output-0"
+              className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+              style={{ background: "#22c55e", top: "35%" }}
+            />
+            <span
+              className="absolute text-[9px] font-medium whitespace-nowrap pointer-events-none"
+              style={{ left: "calc(100% + 14px)", top: "35%", transform: "translateY(-50%)", color: "#22c55e" }}
+            >
+              Sim ✓
+            </span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="output-1"
+              className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+              style={{ background: "#ef4444", top: "70%" }}
+            />
+            <span
+              className="absolute text-[9px] font-medium whitespace-nowrap pointer-events-none"
+              style={{ left: "calc(100% + 14px)", top: "70%", transform: "translateY(-50%)", color: "#ef4444" }}
+            >
+              Não ✗
+            </span>
+          </>
+        ) : (
+          Array.from({ length: pathCount }).map((_, i) => (
+            <Handle
+              key={`output-${i}`}
+              type="source"
+              position={Position.Right}
+              id={`output-${i}`}
+              className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+              style={{ background: accentColor, top: `${((i + 1) / (pathCount + 1)) * 100}%` }}
+            />
+          ))
+        )
+      ) : hasTimeoutOutputs ? (
+        <>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output-0"
+            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+            style={{ background: accentColor, top: "35%" }}
+          />
+          <span
+            className="absolute text-[9px] font-medium text-muted-foreground whitespace-nowrap pointer-events-none"
+            style={{ left: "calc(100% + 14px)", top: "35%", transform: "translateY(-50%)" }}
+          >
+            Respondeu ✓
+          </span>
+          <Handle
+            type="source"
+            position={Position.Right}
+            id="output-1"
+            className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+            style={{ background: "#f97316", top: "70%" }}
+          />
+          <span
+            className="absolute text-[9px] font-medium whitespace-nowrap pointer-events-none"
+            style={{ left: "calc(100% + 14px)", top: "70%", transform: "translateY(-50%)", color: "#f97316" }}
+          >
+            {timeoutLabel} ⏱
+          </span>
+        </>
       ) : (
-        <Handle type="source" position={Position.Right}
-          className="!w-3.5 !h-3.5 !bg-muted-foreground/50 !border-2 !border-card !rounded-full !top-1/2 !-translate-y-1/2" />
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!w-3.5 !h-3.5 !border-2 !border-card !rounded-full"
+          style={{ background: accentColor }}
+        />
       )}
     </div>
   );
-};
+}
 
 export default memo(StepNode);

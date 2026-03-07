@@ -1,60 +1,75 @@
-import { type DragEvent } from "react";
-import { nodeTypeConfig, categoryLabels, type FlowNodeType } from "@/types/chatbot";
-import {
-  Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
-  GitBranch, Clock, Sparkles, Cog, Shuffle,
-  MessageCircle, MousePointerClick,
-} from "lucide-react";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import type { FC } from "react";
+import { icons } from "lucide-react";
+import { nodeTypeConfig, type FlowNodeType } from "@/types/chatbot";
 
-const iconMap: Record<string, FC<{ className?: string }>> = {
-  Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
-  GitBranch, Clock, Sparkles, Cog, Shuffle,
-  MessageCircle, MousePointerClick,
-};
+interface NodePaletteProps {
+  onDragStart: (type: FlowNodeType) => void;
+}
 
-const grouped = Object.entries(nodeTypeConfig).reduce<Record<string, { type: FlowNodeType; label: string; icon: string; color: string; description: string }[]>>(
-  (acc, [type, cfg]) => {
-    const cat = cfg.category;
-    if (!acc[cat]) acc[cat] = [];
-    acc[cat].push({ type: type as FlowNodeType, ...cfg });
-    return acc;
-  },
-  {}
-);
-
-export default function NodePalette() {
-  const onDragStart = (e: DragEvent, nodeType: FlowNodeType) => {
-    e.dataTransfer.setData("application/reactflow", nodeType);
-    e.dataTransfer.effectAllowed = "move";
-  };
+export function NodePalette({ onDragStart }: NodePaletteProps) {
+  const categories = [
+    {
+      label: "Gatilhos",
+      types: ["trigger"] as FlowNodeType[],
+    },
+    {
+      label: "Mensagens",
+      types: ["sendText", "sendAudio", "sendVideo", "sendImage", "sendFile"] as FlowNodeType[],
+    },
+    {
+      label: "Lógica",
+      types: ["condition", "randomizer", "waitDelay", "waitForReply", "waitForClick"] as FlowNodeType[],
+    },
+    {
+      label: "Ações",
+      types: ["action"] as FlowNodeType[],
+    },
+    {
+      label: "Inteligência Artificial",
+      types: ["aiAgent"] as FlowNodeType[],
+    },
+  ];
 
   return (
-    <ScrollArea className="h-full">
-      <div className="p-3 space-y-4">
-        <h3 className="text-sm font-semibold text-foreground">Componentes</h3>
-        {Object.entries(grouped).map(([cat, items]) => (
-          <div key={cat}>
-            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-1.5">
-              {categoryLabels[cat] || cat}
+    <div className="w-56 bg-card border-r border-border h-full overflow-y-auto">
+      <div className="p-3 border-b border-border">
+        <h3 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+          Componentes
+        </h3>
+      </div>
+      <div className="p-2 space-y-4">
+        {categories.map((cat) => (
+          <div key={cat.label}>
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider px-2 mb-1.5">
+              {cat.label}
             </p>
             <div className="space-y-1">
-              {items.map(({ type, label, icon, color, description }) => {
-                const Icon = iconMap[icon] || Zap;
+              {cat.types.map((type) => {
+                const config = nodeTypeConfig[type];
                 return (
                   <div
                     key={type}
                     draggable
-                    onDragStart={(e) => onDragStart(e, type)}
-                    className="flex items-center gap-2 px-2 py-1.5 rounded-md cursor-grab hover:bg-accent transition-colors border border-transparent hover:border-border"
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("application/reactflow", type);
+                      e.dataTransfer.effectAllowed = "move";
+                      onDragStart(type);
+                    }}
+                    className="flex items-center gap-2 p-2 rounded-lg cursor-grab hover:bg-secondary active:cursor-grabbing transition-colors group"
                   >
-                    <div className="w-6 h-6 rounded flex items-center justify-center flex-shrink-0" style={{ backgroundColor: color }}>
-                      <Icon className="h-3 w-3 text-white" />
+                    <div
+                      className="flex items-center justify-center w-8 h-8 rounded-lg"
+                      style={{ backgroundColor: config.color + "20", color: config.color }}
+                    >
+                      {(() => {
+                        const LucideIcon = icons[config.icon as keyof typeof icons];
+                        return LucideIcon ? <LucideIcon className="w-4 h-4" /> : null;
+                      })()}
                     </div>
-                    <div className="min-w-0">
-                      <p className="text-xs font-medium text-foreground truncate">{label}</p>
-                      <p className="text-[10px] text-muted-foreground truncate">{description}</p>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate">{config.label}</p>
+                      <p className="text-[10px] text-muted-foreground truncate">
+                        {config.description}
+                      </p>
                     </div>
                   </div>
                 );
@@ -63,6 +78,8 @@ export default function NodePalette() {
           </div>
         ))}
       </div>
-    </ScrollArea>
+    </div>
   );
 }
+
+export default NodePalette;
