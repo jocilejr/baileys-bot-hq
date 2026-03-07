@@ -1,32 +1,35 @@
 
 
-# Plano: Forçar sincronização do install.sh com GitHub
+# Plano: Nova abordagem para sincronizar o instalador
 
-## Problema
+## Diagnóstico
 
-O `install.sh` no Lovable está **correto** (v2.0 com Supabase Self-Hosted), mas o GitHub não está recebendo a atualização. A VPS mostra a versão antiga com prompt `(ex: zapmanager.com)` ao invés de `(ex: app.chatbotsimplificado.com)`.
+O `install.sh` no Lovable está correto (v2.0.1), mas o sync do Lovable para o GitHub **não está detectando as mudanças neste arquivo**. O `git pull` só trouxe `.lovable/plan.md`. Isso indica que o Lovable pode ter um cache ou snapshot antigo do `install.sh` e não reconhece que ele mudou.
 
-## Solução
+## Nova Abordagem
 
-Fazer uma alteração mais significativa no `install.sh` para forçar o push para o GitHub. Vou adicionar um bloco de comentário visível no início do arquivo e um `echo` extra para garantir que o Lovable detecte a mudança e sincronize.
+Em vez de editar o `install.sh` existente (que claramente não está sendo sincronizado), vou:
+
+1. **Deletar o `install.sh` atual** e **recriar do zero** com um nome/conteúdo completo usando `write_file` — isso força o Lovable a tratar como arquivo novo e incluir no próximo commit/push.
+
+2. Se isso ainda não funcionar, **criar um arquivo alternativo** como `deploy.sh` com todo o conteúdo correto, que será um arquivo 100% novo e garantidamente sincronizado.
 
 ## Mudanças
 
-### `install.sh`
-- Adicionar linha de versão/build timestamp mais explícita
-- Adicionar `echo` com versão no início da execução para o usuário confirmar visualmente que está rodando a versão correta
+### Deletar e recriar `install.sh`
+- Usar `write_file` para sobrescrever completamente o arquivo com o conteúdo correto (v2.0.1 Supabase Self-Hosted)
+- Todo o conteúdo será escrito de uma vez, sem edições parciais
+
+### Plano B: `deploy.sh` (se install.sh continuar sem sync)
+- Criar arquivo novo `deploy.sh` com conteúdo idêntico
+- Na VPS: `chmod +x deploy.sh && sudo ./deploy.sh`
 
 ## Após implementação
 
-Na VPS:
 ```bash
 cd ~/baileys-bot-hq
 git pull
-head -5 install.sh
-# Deve mostrar "v2.0" e "Supabase Self-Hosted"
-chmod +x install.sh
-sudo ./install.sh
+ls -la install.sh deploy.sh  # ver qual existe
+head -5 install.sh            # confirmar versão
 ```
-
-Se o `git pull` ainda não trouxer a versão nova, o problema é de sync do Lovable com o GitHub — nesse caso será necessário copiar o conteúdo manualmente.
 
