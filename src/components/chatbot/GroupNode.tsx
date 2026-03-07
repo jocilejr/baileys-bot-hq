@@ -18,6 +18,28 @@ const iconMap: Record<string, FC<{ className?: string }>> = {
   MessageCircle, MousePointerClick,
 };
 
+function formatWhatsApp(text: string): string {
+  return text
+    .replace(/\*(.*?)\*/g, "<b>$1</b>")
+    .replace(/_(.*?)_/g, "<i>$1</i>")
+    .replace(/~(.*?)~/g, "<s>$1</s>");
+}
+
+function DelayIndicator({ delayMs }: { delayMs: number }) {
+  return (
+    <div className="flex items-center gap-1.5 px-2 py-0.5">
+      <div className="flex-1 border-t border-dashed border-emerald-500/30" />
+      <span className="text-[9px] font-medium text-emerald-400 whitespace-nowrap">
+        {formatDelay(delayMs)} · digitando...
+      </span>
+      <div className="flex-1 border-t border-dashed border-emerald-500/30" />
+    </div>
+  );
+}
+
+/** Message-type steps rendered as WhatsApp-style chat bubbles */
+const MESSAGE_TYPES = ["sendText", "sendImage", "sendAudio", "sendVideo", "sendDocument", "sendButtons", "sendList"];
+
 function StepBubble({
   step,
   index,
@@ -42,23 +64,93 @@ function StepBubble({
   const config = nodeTypeConfig[step.type];
   if (!config) return null;
   const Icon = iconMap[config.icon] || Zap;
+  const isMessage = MESSAGE_TYPES.includes(step.type);
 
-  const getPreviewText = () => {
+  const getPreviewContent = () => {
     switch (step.type) {
       case "sendText":
-        return step.text ? step.text.substring(0, 60) + (step.text.length > 60 ? "..." : "") : "Mensagem vazia";
+        return step.text ? (
+          <p
+            className="text-[12px] text-foreground leading-relaxed whitespace-pre-wrap"
+            dangerouslySetInnerHTML={{ __html: formatWhatsApp(step.text.substring(0, 200)) }}
+          />
+        ) : (
+          <p className="text-[11px] text-muted-foreground/50 italic">Mensagem vazia</p>
+        );
       case "sendImage":
-        return step.caption || "Imagem";
+        return (
+          <div className="space-y-1">
+            {step.mediaUrl ? (
+              <div className="w-full h-20 rounded overflow-hidden bg-muted">
+                <img src={step.mediaUrl} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 text-muted-foreground/50">
+                <Image className="h-5 w-5" />
+                <span className="text-[10px] italic">Sem imagem</span>
+              </div>
+            )}
+            {step.caption && <p className="text-[11px] text-foreground">{step.caption}</p>}
+          </div>
+        );
       case "sendAudio":
-        return "Áudio";
+        return (
+          <div className="flex items-center gap-2 py-1">
+            <Mic className="h-4 w-4 text-muted-foreground" />
+            <div className="flex items-center gap-0.5">
+              {[3, 5, 8, 4, 7, 3, 6, 4, 5, 3].map((h, i) => (
+                <div key={i} className="w-1 rounded-full bg-primary/60" style={{ height: `${h * 2}px` }} />
+              ))}
+            </div>
+            <span className="text-[10px] text-muted-foreground">{step.mediaUrl ? "Áudio" : "Sem áudio"}</span>
+          </div>
+        );
       case "sendVideo":
-        return step.caption || "Vídeo";
+        return (
+          <div className="flex items-center gap-1.5 text-muted-foreground/60">
+            <Video className="h-5 w-5" />
+            <span className="text-[10px]">{step.mediaUrl ? "Vídeo anexado" : "Sem vídeo"}</span>
+          </div>
+        );
       case "sendDocument":
-        return step.mediaUrl ? decodeURIComponent(step.mediaUrl.split("/").pop() || "Documento") : "Documento";
+        return (
+          <div className="flex items-center gap-1.5 text-muted-foreground/60">
+            <FileText className="h-5 w-5" />
+            <span className="text-[10px] truncate">
+              {step.mediaUrl ? decodeURIComponent(step.mediaUrl.split("/").pop() || "arquivo") : "Sem arquivo"}
+            </span>
+          </div>
+        );
       case "sendButtons":
-        return step.text ? step.text.substring(0, 40) : "Botões";
+        return (
+          <div className="space-y-1.5">
+            {step.text && (
+              <p className="text-[12px] text-foreground leading-relaxed" dangerouslySetInnerHTML={{ __html: formatWhatsApp(step.text.substring(0, 120)) }} />
+            )}
+            <div className="flex flex-wrap gap-1">
+              {(step.buttons || []).map((btn) => (
+                <span key={btn.id} className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-primary/15 text-primary border border-primary/20">
+                  {btn.text}
+                </span>
+              ))}
+            </div>
+          </div>
+        );
       case "sendList":
-        return step.text ? step.text.substring(0, 40) : "Lista";
+        return (
+          <div className="space-y-1">
+            {step.text && <p className="text-[11px] text-foreground">{step.text.substring(0, 60)}</p>}
+            <span className="text-[10px] text-muted-foreground">{(step.listSections || []).reduce((a, s) => a + s.rows.length, 0)} itens</span>
+          </div>
+        );
+      default:
+        return null;
+    }
+  };
+
+  // Non-message steps (logic, action, etc.) — compact row style
+  const getNonMessagePreview = () => {
+    switch (step.type) {
       case "condition":
         return `${step.conditionField || "mensagem"} ${step.conditionOperator || "contém"} "${step.conditionValue || "..."}"`;
       case "delay":
@@ -75,11 +167,51 @@ function StepBubble({
         return (step.aiModel || "gemini").split("/").pop();
       case "trigger":
         return step.triggerValue || "Gatilho";
+      case "waitMessage":
+        return "Aguardando resposta...";
+      case "waitClick":
+        return "Aguardando clique no link";
       default:
         return config.label;
     }
   };
 
+  // WhatsApp-style chat bubble for message types
+  if (isMessage) {
+    return (
+      <div
+        className={cn(
+          "relative group/bubble rounded-lg cursor-pointer transition-all",
+          isSelected ? "ring-1 ring-primary/40" : ""
+        )}
+        onClick={(e) => { e.stopPropagation(); onSelect(); }}
+      >
+        <div className="bg-muted/60 rounded-lg px-3 py-2 border border-border/30">
+          {getPreviewContent()}
+        </div>
+
+        {/* Hover controls */}
+        <div className="absolute -left-5 top-1/2 -translate-y-1/2 flex flex-col gap-0.5 opacity-0 group-hover/bubble:opacity-100 transition-opacity">
+          <Button variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20" disabled={index === 0}
+            onClick={(e) => { e.stopPropagation(); onMoveUp(); }}>
+            <ChevronUp className="h-3 w-3" />
+          </Button>
+          <Button variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20" disabled={index === totalSteps - 1 || isFinisher}
+            onClick={(e) => { e.stopPropagation(); onMoveDown(); }}>
+            <ChevronDown className="h-3 w-3" />
+          </Button>
+        </div>
+        <div className="absolute -right-5 top-1/2 -translate-y-1/2 opacity-0 group-hover/bubble:opacity-100 transition-opacity">
+          <Button variant="ghost" size="icon" className="h-5 w-5 text-muted-foreground hover:text-destructive"
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}>
+            <Trash2 className="h-2.5 w-2.5" />
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Compact row for non-message steps (logic, action, finisher)
   return (
     <div
       className={cn(
@@ -90,77 +222,34 @@ function StepBubble({
             ? "bg-primary/20 ring-1 ring-primary/40"
             : "bg-muted/30 hover:bg-muted/50"
       )}
-      onClick={(e) => {
-        e.stopPropagation();
-        onSelect();
-      }}
+      onClick={(e) => { e.stopPropagation(); onSelect(); }}
     >
-      {/* Reorder arrows - left side */}
+      {/* Reorder arrows */}
       <div className="flex flex-col gap-0.5 shrink-0 opacity-0 group-hover/bubble:opacity-100 transition-opacity">
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20"
-          disabled={index === 0}
-          onClick={(e) => {
-            e.stopPropagation();
-            onMoveUp();
-          }}
-        >
+        <Button variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20" disabled={index === 0}
+          onClick={(e) => { e.stopPropagation(); onMoveUp(); }}>
           <ChevronUp className="h-3 w-3" />
         </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20"
-          disabled={index === totalSteps - 1 || isFinisher}
-          onClick={(e) => {
-            e.stopPropagation();
-            onMoveDown();
-          }}
-        >
+        <Button variant="ghost" size="icon" className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20" disabled={index === totalSteps - 1 || isFinisher}
+          onClick={(e) => { e.stopPropagation(); onMoveDown(); }}>
           <ChevronDown className="h-3 w-3" />
         </Button>
       </div>
 
       {/* Icon */}
-      <div
-        className="flex items-center justify-center w-6 h-6 rounded-md shrink-0"
-        style={{ backgroundColor: config.color }}
-      >
+      <div className="flex items-center justify-center w-6 h-6 rounded-md shrink-0" style={{ backgroundColor: config.color }}>
         <Icon className="h-3 w-3 text-white" />
       </div>
 
       {/* Content */}
       <div className="min-w-0 flex-1">
         <p className="text-[11px] font-semibold text-foreground/90 truncate">{config.label}</p>
-        <p className="text-[10px] text-muted-foreground truncate">{getPreviewText()}</p>
-        {step.type === "sendButtons" && step.buttons && step.buttons.length > 0 && (
-          <div className="flex flex-wrap gap-1 mt-1">
-            {step.buttons.map((btn) => (
-              <span key={btn.id} className="px-1.5 py-0.5 rounded text-[9px] bg-primary/15 text-primary border border-primary/20">
-                {btn.text}
-              </span>
-            ))}
-          </div>
-        )}
-        {step.type === "sendImage" && step.mediaUrl && (
-          <div className="mt-1 w-full h-10 rounded overflow-hidden bg-muted">
-            <img src={step.mediaUrl} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
-          </div>
-        )}
+        <p className="text-[10px] text-muted-foreground truncate">{getNonMessagePreview()}</p>
       </div>
 
       {/* Delete */}
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-5 w-5 shrink-0 opacity-0 group-hover/bubble:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-        onClick={(e) => {
-          e.stopPropagation();
-          onDelete();
-        }}
-      >
+      <Button variant="ghost" size="icon" className="h-5 w-5 shrink-0 opacity-0 group-hover/bubble:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
+        onClick={(e) => { e.stopPropagation(); onDelete(); }}>
         <Trash2 className="h-2.5 w-2.5" />
       </Button>
 
@@ -169,21 +258,13 @@ function StepBubble({
         <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center gap-4 -mr-3 pointer-events-none">
           <div className="flex items-center gap-1.5 pointer-events-auto">
             <span className="text-[9px] font-semibold text-emerald-500/80">Respondeu</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id="responded"
-              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-emerald-500 !border !border-background/80"
-            />
+            <Handle type="source" position={Position.Right} id="responded"
+              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-emerald-500 !border !border-background/80" />
           </div>
           <div className="flex items-center gap-1.5 pointer-events-auto">
             <span className="text-[9px] font-semibold text-red-400/80">Não respondeu</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id="timeout"
-              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-red-400 !border !border-background/80"
-            />
+            <Handle type="source" position={Position.Right} id="timeout"
+              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-red-400 !border !border-background/80" />
           </div>
         </div>
       )}
