@@ -245,7 +245,7 @@ const StepNode = ({ data, selected }: NodeProps) => {
       )}
     >
       {nodeData.type !== "trigger" && (
-        <Handle type="target" position={Position.Top} className="!w-3 !h-3 !bg-primary !border-2 !border-background" />
+        <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2" />
       )}
 
       <div
@@ -265,19 +265,19 @@ const StepNode = ({ data, selected }: NodeProps) => {
         <>
           <Handle
             type="source"
-            position={Position.Bottom}
+            position={Position.Right}
             id="yes"
             className="!w-3 !h-3 !bg-emerald-500 !border-2 !border-background"
-            style={{ left: "30%" }}
+            style={{ top: "40%" }}
           />
           <Handle
             type="source"
-            position={Position.Bottom}
+            position={Position.Right}
             id="no"
             className="!w-3 !h-3 !bg-red-500 !border-2 !border-background"
-            style={{ left: "70%" }}
+            style={{ top: "70%" }}
           />
-          <div className="absolute bottom-0 left-0 right-0 flex justify-between px-6 -mb-5 pointer-events-none">
+          <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-center gap-6 -mr-8 pointer-events-none" style={{ top: "40%" }}>
             <span className="text-[9px] font-bold text-emerald-400">Sim</span>
             <span className="text-[9px] font-bold text-red-400">Não</span>
           </div>
@@ -286,21 +286,21 @@ const StepNode = ({ data, selected }: NodeProps) => {
         <>
           {(nodeData.buttons || []).map((btn, i) => {
             const total = nodeData.buttons!.length;
-            const pct = ((i + 1) / (total + 1)) * 100;
+            const pct = 30 + ((i) / Math.max(total - 1, 1)) * 50;
             return (
               <Handle
                 key={btn.id}
                 type="source"
-                position={Position.Bottom}
+                position={Position.Right}
                 id={`btn_${btn.id}`}
                 className="!w-2.5 !h-2.5 !bg-primary !border-2 !border-background"
-                style={{ left: `${pct}%` }}
+                style={{ top: `${pct}%` }}
               />
             );
           })}
         </>
       ) : (
-        <Handle type="source" position={Position.Bottom} className="!w-3 !h-3 !bg-primary !border-2 !border-background" />
+        <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2" />
       )}
     </div>
   );

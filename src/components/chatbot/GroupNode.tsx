@@ -197,11 +197,11 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
           : "border-border/60 bg-card hover:shadow-xl"
       )}
     >
-      {/* Target handle */}
+      {/* Target handle - left */}
       <Handle
         type="target"
-        position={Position.Top}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-background"
+        position={Position.Left}
+        className="!w-3 !h-3 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2"
       />
 
       {/* Header */}
@@ -294,11 +294,11 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
         </div>
       </div>
 
-      {/* Source handle */}
+      {/* Source handle - right */}
       <Handle
         type="source"
-        position={Position.Bottom}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-background"
+        position={Position.Right}
+        className="!w-3 !h-3 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2"
       />
     </div>
   );
