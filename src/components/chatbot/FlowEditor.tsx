@@ -403,6 +403,10 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
           if (n.id === groupId) {
             const groupData = n.data as unknown as FlowNodeData;
             const steps = [...(groupData.steps || [])];
+            // Block if sealed
+            if (steps.length > 0 && BLOCK_FINISHERS.includes(steps[steps.length - 1].type)) {
+              return n;
+            }
             const newStep = getDefaultNodeData("sendText");
             newStep.stepId = `step_${Date.now()}`;
             steps.push(newStep);
