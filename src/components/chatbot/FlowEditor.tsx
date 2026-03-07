@@ -211,9 +211,12 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
         const dist = Math.sqrt(Math.pow(draggedX - gx, 2) + Math.pow(draggedY - gy, 2));
 
         if (dist < DOCK_THRESHOLD * 2) {
-          // Merge into this group
+          // Check if group is sealed
           const groupData = node.data as unknown as FlowNodeData;
           const steps = [...(groupData.steps || [])];
+          if (steps.length > 0 && BLOCK_FINISHERS.includes(steps[steps.length - 1].type)) {
+            continue;
+          }
           steps.push(extractStepData(dragged as FlowNode));
 
           return nds
