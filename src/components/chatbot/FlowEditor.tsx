@@ -75,7 +75,7 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
   })();
 
   const onConnect = useCallback((params: Connection) => {
-    setEdges((eds) => addEdge({ ...params, animated: true, style: { stroke: "hsl(142 60% 45%)" } }, eds));
+    setEdges((eds) => addEdge({ ...params, type: "smoothstep", style: { stroke: "hsl(var(--muted-foreground) / 0.35)", strokeWidth: 1.5 } }, eds));
   }, [setEdges]);
 
   const onDragOver = useCallback((e: DragEvent) => {
@@ -471,11 +471,12 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
             nodeTypes={nodeTypes}
             fitView
             deleteKeyCode={["Backspace", "Delete"]}
-            defaultEdgeOptions={{ animated: true, style: { stroke: "hsl(142 60% 45%)", strokeWidth: 2 } }}
+            defaultEdgeOptions={{ type: "smoothstep", style: { stroke: "hsl(var(--muted-foreground) / 0.35)", strokeWidth: 1.5 } }}
+            connectionLineStyle={{ stroke: "hsl(var(--primary) / 0.5)", strokeWidth: 1.5 }}
             className="bg-background"
           >
-            <Controls className="!bg-card !border-border !shadow-md" />
-            <Background variant={BackgroundVariant.Dots} gap={20} size={1} className="!bg-background" />
+            <Controls className="!bg-card !border-border/50 !shadow-sm !rounded-lg" />
+            <Background variant={BackgroundVariant.Dots} gap={24} size={0.5} className="!bg-background" />
           </ReactFlow>
         </div>
 

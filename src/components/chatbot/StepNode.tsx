@@ -240,67 +240,77 @@ const StepNode = ({ data, selected }: NodeProps) => {
   return (
     <div
       className={cn(
-        "relative min-w-[220px] max-w-[280px] rounded-lg border bg-card shadow-md transition-all",
-        selected ? "ring-2 ring-primary shadow-lg" : "hover:shadow-lg"
+        "relative min-w-[220px] max-w-[280px] rounded-lg border bg-card transition-all duration-150",
+        selected
+          ? "ring-1 ring-primary/60 shadow-md border-primary/40"
+          : "shadow-sm border-border/40 hover:shadow-md hover:border-border/60"
       )}
     >
+      {/* Target handle — left center */}
       {nodeData.type !== "trigger" && (
-        <Handle type="target" position={Position.Left} className="!w-3 !h-3 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2" />
+        <Handle
+          type="target"
+          position={Position.Left}
+          className="!w-2 !h-2 !bg-muted-foreground/50 !border !border-background/80 !top-1/2 !-translate-y-1/2"
+        />
       )}
 
+      {/* Header */}
       <div
-        className="flex items-center gap-2 px-3 py-2 rounded-t-lg text-white text-xs font-semibold"
-        style={{ backgroundColor: config.color }}
+        className="flex items-center gap-2 px-3 py-1.5 rounded-t-lg text-white/90 text-[11px] font-semibold tracking-wide uppercase"
+        style={{ backgroundColor: `${config.color}dd` }}
       >
-        <Icon className="h-3.5 w-3.5" />
+        <Icon className="h-3 w-3 opacity-80" />
         <span className="truncate">{nodeData.label || config.label}</span>
       </div>
 
+      {/* Body */}
       <div className="px-3 py-2.5">
         <NodePreview data={nodeData} />
       </div>
 
-      {/* Conditional handles: Sim/Não */}
+      {/* Source handles — right side */}
       {isCondition ? (
-        <>
-          <Handle
-            type="source"
-            position={Position.Right}
-            id="yes"
-            className="!w-3 !h-3 !bg-emerald-500 !border-2 !border-background"
-            style={{ top: "40%" }}
-          />
-          <Handle
-            type="source"
-            position={Position.Right}
-            id="no"
-            className="!w-3 !h-3 !bg-red-500 !border-2 !border-background"
-            style={{ top: "70%" }}
-          />
-          <div className="absolute right-0 top-0 bottom-0 flex flex-col justify-center gap-6 -mr-8 pointer-events-none" style={{ top: "40%" }}>
-            <span className="text-[9px] font-bold text-emerald-400">Sim</span>
-            <span className="text-[9px] font-bold text-red-400">Não</span>
+        <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center gap-5 -mr-1 pointer-events-none">
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            <span className="text-[9px] font-semibold text-emerald-500/80">Sim</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="yes"
+              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-emerald-500 !border !border-background/80"
+            />
           </div>
-        </>
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            <span className="text-[9px] font-semibold text-red-400/80">Não</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="no"
+              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-red-400 !border !border-background/80"
+            />
+          </div>
+        </div>
       ) : hasButtons ? (
-        <>
-          {(nodeData.buttons || []).map((btn, i) => {
-            const total = nodeData.buttons!.length;
-            const pct = 30 + ((i) / Math.max(total - 1, 1)) * 50;
-            return (
+        <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center -mr-1 pointer-events-none" style={{ gap: "6px" }}>
+          {(nodeData.buttons || []).map((btn) => (
+            <div key={btn.id} className="flex items-center gap-1.5 pointer-events-auto">
+              <span className="text-[8px] font-medium text-muted-foreground/70 max-w-[60px] truncate">{btn.text}</span>
               <Handle
-                key={btn.id}
                 type="source"
                 position={Position.Right}
                 id={`btn_${btn.id}`}
-                className="!w-2.5 !h-2.5 !bg-primary !border-2 !border-background"
-                style={{ top: `${pct}%` }}
+                className="!relative !transform-none !top-auto !left-auto !w-1.5 !h-1.5 !bg-primary/70 !border !border-background/80"
               />
-            );
-          })}
-        </>
+            </div>
+          ))}
+        </div>
       ) : (
-        <Handle type="source" position={Position.Right} className="!w-3 !h-3 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2" />
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!w-2 !h-2 !bg-muted-foreground/50 !border !border-background/80 !top-1/2 !-translate-y-1/2"
+        />
       )}
     </div>
   );

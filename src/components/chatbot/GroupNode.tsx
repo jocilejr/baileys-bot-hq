@@ -201,7 +201,7 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
       <Handle
         type="target"
         position={Position.Left}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2"
+        className="!w-2 !h-2 !bg-muted-foreground/50 !border !border-background/80 !top-1/2 !-translate-y-1/2"
       />
 
       {/* Header */}
@@ -298,7 +298,7 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
       <Handle
         type="source"
         position={Position.Right}
-        className="!w-3 !h-3 !bg-primary !border-2 !border-background !top-1/2 !-translate-y-1/2"
+        className="!w-2 !h-2 !bg-muted-foreground/50 !border !border-background/80 !top-1/2 !-translate-y-1/2"
       />
     </div>
   );
