@@ -1,7 +1,7 @@
 import { memo, type FC } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { FlowNodeData } from "@/types/chatbot";
-import { nodeTypeConfig, formatDelay, operatorLabels, triggerTypeLabels } from "@/types/chatbot";
+import { nodeTypeConfig, formatDelay, operatorLabels, triggerTypeLabels, BLOCK_FINISHERS } from "@/types/chatbot";
 import {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
   GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
@@ -225,21 +225,31 @@ function NodePreview({ data }: { data: FlowNodeData }) {
         </div>
       );
 
-    case "waitMessage":
+    case "waitMessage": {
+      const unit = data.timeoutUnit === "hours" ? "h" : data.timeoutUnit === "seconds" ? "s" : "min";
       return (
-        <div className="flex items-center gap-2 py-1">
-          <MessageCircle className="h-4 w-4 text-muted-foreground" />
-          <span className="text-[11px] text-muted-foreground font-medium">Aguardando resposta...</span>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 py-1">
+            <MessageCircle className="h-4 w-4 text-muted-foreground" />
+            <span className="text-[11px] text-muted-foreground font-medium">Aguardando resposta...</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground/70">Timeout: {data.timeoutValue || 5}{unit}</p>
         </div>
       );
+    }
 
-    case "waitClick":
+    case "waitClick": {
+      const unit = data.timeoutUnit === "hours" ? "h" : data.timeoutUnit === "seconds" ? "s" : "min";
       return (
-        <div className="flex items-center gap-2 py-1">
-          <MousePointerClick className="h-4 w-4 text-muted-foreground" />
-          <span className="text-[11px] text-muted-foreground font-medium">Aguardando clique no link</span>
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2 py-1">
+            <MousePointerClick className="h-4 w-4 text-muted-foreground" />
+            <span className="text-[11px] text-muted-foreground font-medium">Aguardando clique no link</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground/70">Timeout: {data.timeoutValue || 5}{unit}</p>
         </div>
       );
+    }
 
     default:
       return <p className="text-[11px] text-muted-foreground">{(nodeTypeConfig as any)[data.type]?.description || String(data.type)}</p>;
