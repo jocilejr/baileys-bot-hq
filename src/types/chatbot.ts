@@ -38,6 +38,9 @@ export interface FlowNodeData {
   conditionValue?: string;
   // delay
   delayMs?: number;
+  // timeout (finishers)
+  timeoutValue?: number;
+  timeoutUnit?: "seconds" | "minutes" | "hours";
   // assign
   department?: string;
   // tag
