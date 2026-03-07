@@ -5,12 +5,14 @@ import { nodeTypeConfig, formatDelay, operatorLabels, triggerTypeLabels } from "
 import {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
   GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
+  MessageCircle, MousePointerClick,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const iconMap: Record<string, FC<{ className?: string }>> = {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
   GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
+  MessageCircle, MousePointerClick,
 };
 
 function formatWhatsApp(text: string): string {
@@ -220,6 +222,22 @@ function NodePreview({ data }: { data: FlowNodeData }) {
           {data.aiPrompt && (
             <p className="text-[10px] text-muted-foreground line-clamp-2">{data.aiPrompt.substring(0, 80)}</p>
           )}
+        </div>
+      );
+
+    case "waitMessage":
+      return (
+        <div className="flex items-center gap-2 py-1">
+          <MessageCircle className="h-4 w-4 text-muted-foreground" />
+          <span className="text-[11px] text-muted-foreground font-medium">Aguardando resposta...</span>
+        </div>
+      );
+
+    case "waitClick":
+      return (
+        <div className="flex items-center gap-2 py-1">
+          <MousePointerClick className="h-4 w-4 text-muted-foreground" />
+          <span className="text-[11px] text-muted-foreground font-medium">Aguardando clique no link</span>
         </div>
       );
 
