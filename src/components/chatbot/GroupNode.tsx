@@ -113,7 +113,7 @@ function StepBubble({
           variant="ghost"
           size="icon"
           className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20"
-          disabled={index === totalSteps - 1}
+          disabled={index === totalSteps - 1 || isFinisher}
           onClick={(e) => {
             e.stopPropagation();
             onMoveDown();
@@ -275,7 +275,9 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
                   if (i > 0) emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i - 1 });
                 }}
                 onMoveDown={() => {
-                  if (i < steps.length - 1) emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i + 1 });
+                  // Prevent moving down if next step is a finisher, or if this is a finisher
+                  if (i < steps.length - 1 && !BLOCK_FINISHERS.includes(step.type) && !BLOCK_FINISHERS.includes(steps[i + 1].type))
+                    emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i + 1 });
                 }}
               />
               {i < steps.length - 1 && (
