@@ -113,7 +113,7 @@ function StepBubble({
           variant="ghost"
           size="icon"
           className="h-4 w-4 text-muted-foreground hover:text-foreground disabled:opacity-20"
-          disabled={index === totalSteps - 1}
+          disabled={index === totalSteps - 1 || isFinisher || (index === totalSteps - 2 && BLOCK_FINISHERS.includes(steps[totalSteps - 1]?.type))}
           onClick={(e) => {
             e.stopPropagation();
             onMoveDown();
