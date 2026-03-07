@@ -38,6 +38,9 @@ export interface FlowNodeData {
   conditionValue?: string;
   // delay
   delayMs?: number;
+  // timeout (finishers)
+  timeoutValue?: number;
+  timeoutUnit?: "seconds" | "minutes" | "hours";
   // assign
   department?: string;
   // tag
@@ -158,9 +161,9 @@ export function getDefaultNodeData(type: FlowNodeType): FlowNodeData {
     case "aiResponse":
       return { ...base, aiPrompt: "", aiModel: "google/gemini-2.5-flash", aiTemperature: 0.7, aiMaxTokens: 1024 };
     case "waitMessage":
-      return base;
+      return { ...base, timeoutValue: 5, timeoutUnit: "minutes" };
     case "waitClick":
-      return { ...base, httpUrl: "" };
+      return { ...base, httpUrl: "", timeoutValue: 5, timeoutUnit: "minutes" };
     default:
       return base;
   }

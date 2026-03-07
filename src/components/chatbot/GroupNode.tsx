@@ -306,12 +306,35 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
         )}
       </div>
 
-      {/* Source handle - right */}
-      <Handle
-        type="source"
-        position={Position.Right}
-        className="!w-2 !h-2 !bg-muted-foreground/50 !border !border-background/80 !top-1/2 !-translate-y-1/2"
-      />
+      {/* Source handle - right (dual outputs when sealed) */}
+      {isSealed ? (
+        <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center gap-5 -mr-1 pointer-events-none">
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            <span className="text-[9px] font-semibold text-emerald-500/80">Respondeu</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="responded"
+              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-emerald-500 !border !border-background/80"
+            />
+          </div>
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            <span className="text-[9px] font-semibold text-red-400/80">Não respondeu</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="timeout"
+              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-red-400 !border !border-background/80"
+            />
+          </div>
+        </div>
+      ) : (
+        <Handle
+          type="source"
+          position={Position.Right}
+          className="!w-2 !h-2 !bg-muted-foreground/50 !border !border-background/80 !top-1/2 !-translate-y-1/2"
+        />
+      )}
     </div>
   );
 };

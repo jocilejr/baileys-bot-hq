@@ -387,6 +387,39 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
             </>
           )}
 
+          {/* Wait / Finisher timeout */}
+          {(d.type === "waitMessage" || d.type === "waitClick") && (
+            <>
+              {d.type === "waitClick" && (
+                <div className="space-y-1">
+                  <Label className="text-xs">URL do link</Label>
+                  <Input value={d.httpUrl || ""} onChange={e => update({ httpUrl: e.target.value })} className="h-8 text-xs" placeholder="https://..." />
+                </div>
+              )}
+              <div className="space-y-1">
+                <Label className="text-xs">Timeout de ausência</Label>
+                <div className="flex gap-2">
+                  <Input
+                    type="number"
+                    min={1}
+                    value={d.timeoutValue ?? 5}
+                    onChange={e => update({ timeoutValue: Math.max(1, Number(e.target.value)) })}
+                    className="h-8 text-xs w-20"
+                  />
+                  <Select value={d.timeoutUnit || "minutes"} onValueChange={v => update({ timeoutUnit: v as FlowNodeData["timeoutUnit"] })}>
+                    <SelectTrigger className="h-8 text-xs flex-1"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="seconds">Segundos</SelectItem>
+                      <SelectItem value="minutes">Minutos</SelectItem>
+                      <SelectItem value="hours">Horas</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p className="text-[10px] text-muted-foreground">Tempo para ativar a saída "Não respondeu"</p>
+              </div>
+            </>
+          )}
+
         </div>
       </ScrollArea>
 
