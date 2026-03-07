@@ -353,6 +353,9 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
         ) : (
           steps.map((step, i) => (
             <div key={step.stepId || i}>
+              {i > 0 && (
+                <DelayIndicator delayMs={step.delayMs || defaultDelay} />
+              )}
               <StepBubble
                 step={step}
                 index={i}
@@ -369,7 +372,6 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
                   if (i > 0) emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i - 1 });
                 }}
                 onMoveDown={() => {
-                  // Prevent moving down if next step is a finisher, or if this is a finisher
                   if (i < steps.length - 1 && !BLOCK_FINISHERS.includes(step.type) && !BLOCK_FINISHERS.includes(steps[i + 1].type))
                     emitEvent("group-step-reorder", { groupId: id, fromIndex: i, toIndex: i + 1 });
                 }}
