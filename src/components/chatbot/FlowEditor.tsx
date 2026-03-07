@@ -385,6 +385,15 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
           if (n.id === groupId) {
             const groupData = n.data as unknown as FlowNodeData;
             const steps = [...(groupData.steps || [])];
+            const movingStep = steps[fromIndex as number];
+            // Prevent moving a finisher away from the last position
+            if (BLOCK_FINISHERS.includes(movingStep.type) && (toIndex as number) < steps.length - 1) {
+              return n;
+            }
+            // Prevent moving a step below a finisher (finisher must stay last)
+            if ((toIndex as number) === steps.length - 1 && BLOCK_FINISHERS.includes(steps[steps.length - 1].type) && (fromIndex as number) !== steps.length - 1) {
+              return n;
+            }
             const [moved] = steps.splice(fromIndex as number, 1);
             steps.splice(toIndex as number, 0, moved);
             return { ...n, data: { ...n.data, steps } };
