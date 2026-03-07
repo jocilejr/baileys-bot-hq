@@ -83,7 +83,7 @@ function StepBubble({
   return (
     <div
       className={cn(
-        "group/bubble flex items-center gap-1.5 px-1.5 py-2 rounded-lg cursor-pointer transition-all",
+        "relative group/bubble flex items-center gap-1.5 px-1.5 py-2 rounded-lg cursor-pointer transition-all",
         isFinisher
           ? "bg-amber-500/10 border border-dashed border-amber-500/40 ring-0"
           : isSelected
@@ -163,6 +163,30 @@ function StepBubble({
       >
         <Trash2 className="h-2.5 w-2.5" />
       </Button>
+
+      {/* Dual output handles on finisher bubble */}
+      {isFinisher && (
+        <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center gap-4 -mr-3 pointer-events-none">
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            <span className="text-[9px] font-semibold text-emerald-500/80">Respondeu</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="responded"
+              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-emerald-500 !border !border-background/80"
+            />
+          </div>
+          <div className="flex items-center gap-1.5 pointer-events-auto">
+            <span className="text-[9px] font-semibold text-red-400/80">Não respondeu</span>
+            <Handle
+              type="source"
+              position={Position.Right}
+              id="timeout"
+              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-red-400 !border !border-background/80"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -306,29 +330,8 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
         )}
       </div>
 
-      {/* Source handle - right (dual outputs when sealed) */}
-      {isSealed ? (
-        <div className="absolute right-0 top-0 bottom-0 flex flex-col items-end justify-center gap-5 -mr-1 pointer-events-none">
-          <div className="flex items-center gap-1.5 pointer-events-auto">
-            <span className="text-[9px] font-semibold text-emerald-500/80">Respondeu</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id="responded"
-              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-emerald-500 !border !border-background/80"
-            />
-          </div>
-          <div className="flex items-center gap-1.5 pointer-events-auto">
-            <span className="text-[9px] font-semibold text-red-400/80">Não respondeu</span>
-            <Handle
-              type="source"
-              position={Position.Right}
-              id="timeout"
-              className="!relative !transform-none !top-auto !left-auto !w-2 !h-2 !bg-red-400 !border !border-background/80"
-            />
-          </div>
-        </div>
-      ) : (
+      {/* Source handle - right (single, only when NOT sealed — sealed uses finisher bubble handles) */}
+      {!isSealed && (
         <Handle
           type="source"
           position={Position.Right}
