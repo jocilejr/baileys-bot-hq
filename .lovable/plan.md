@@ -1,31 +1,32 @@
 
 
-# Plano: Forçar sync do install.sh para o GitHub
+# Plano: Forçar sincronização do install.sh com GitHub
 
 ## Problema
 
-O `install.sh` no Lovable está correto (versão com Supabase Self-Hosted), mas o GitHub ainda tem a versão antiga. O `curl` da VPS baixa a versão antiga do GitHub.
+O `install.sh` no Lovable está **correto** (v2.0 com Supabase Self-Hosted), mas o GitHub não está recebendo a atualização. A VPS mostra a versão antiga com prompt `(ex: zapmanager.com)` ao invés de `(ex: app.chatbotsimplificado.com)`.
 
 ## Solução
 
-Fazer uma edição mínima no `install.sh` (ex: adicionar um comentário com timestamp) para forçar o Lovable a fazer push para o GitHub. Depois disso, o `curl` ou `git pull` na VPS trará a versão correta.
+Fazer uma alteração mais significativa no `install.sh` para forçar o push para o GitHub. Vou adicionar um bloco de comentário visível no início do arquivo e um `echo` extra para garantir que o Lovable detecte a mudança e sincronize.
 
-## Mudança
+## Mudanças
 
 ### `install.sh`
-- Adicionar comentário com versão/data no topo do arquivo para forçar o commit e push automático do Lovable para o GitHub
+- Adicionar linha de versão/build timestamp mais explícita
+- Adicionar `echo` com versão no início da execução para o usuário confirmar visualmente que está rodando a versão correta
 
 ## Após implementação
 
-Na VPS, rodar:
+Na VPS:
 ```bash
 cd ~/baileys-bot-hq
 git pull
-# ou
-curl -o install.sh https://raw.githubusercontent.com/jocilejr/baileys-bot-hq/main/install.sh
-head -10 install.sh
-# Deve mostrar "Supabase Self-Hosted + Baileys"
+head -5 install.sh
+# Deve mostrar "v2.0" e "Supabase Self-Hosted"
 chmod +x install.sh
 sudo ./install.sh
 ```
+
+Se o `git pull` ainda não trouxer a versão nova, o problema é de sync do Lovable com o GitHub — nesse caso será necessário copiar o conteúdo manualmente.
 
