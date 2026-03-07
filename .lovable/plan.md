@@ -1,30 +1,31 @@
 
 
-# Plano: Hardcodar URL do repositório Git no install.sh
+# Plano: Forçar sync do install.sh para o GitHub
 
-O script atual (linha 165) pede interativamente a URL do repositório Git. Vou embutir a URL diretamente no script para que ele clone automaticamente sem perguntar.
+## Problema
+
+O `install.sh` no Lovable está correto (versão com Supabase Self-Hosted), mas o GitHub ainda tem a versão antiga. O `curl` da VPS baixa a versão antiga do GitHub.
+
+## Solução
+
+Fazer uma edição mínima no `install.sh` (ex: adicionar um comentário com timestamp) para forçar o Lovable a fazer push para o GitHub. Depois disso, o `curl` ou `git pull` na VPS trará a versão correta.
 
 ## Mudança
 
-### `install.sh` — Linhas 155-168
+### `install.sh`
+- Adicionar comentário com versão/data no topo do arquivo para forçar o commit e push automático do Lovable para o GitHub
 
-Substituir o bloco que pede `GIT_URL` por clone automático com a URL do repositório hardcodada:
+## Após implementação
 
+Na VPS, rodar:
 ```bash
-# Clonar/atualizar aplicação
-echo ""
-echo "📂 Configurando aplicação em $APP_DIR..."
-mkdir -p $APP_DIR
-
-GIT_URL="https://github.com/SEU_USUARIO/SEU_REPOSITORIO.git"
-
-if [ -d "$APP_DIR/.git" ]; then
-  cd $APP_DIR && git pull
-else
-  git clone "$GIT_URL" $APP_DIR
-  cd $APP_DIR
-fi
+cd ~/baileys-bot-hq
+git pull
+# ou
+curl -o install.sh https://raw.githubusercontent.com/jocilejr/baileys-bot-hq/main/install.sh
+head -10 install.sh
+# Deve mostrar "Supabase Self-Hosted + Baileys"
+chmod +x install.sh
+sudo ./install.sh
 ```
-
-**Nota**: O projeto precisa estar conectado ao GitHub primeiro (Settings → GitHub no Lovable). Depois de conectado, eu substituo o placeholder pela URL real do repositório.
 
