@@ -13,7 +13,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import type { FlowNodeType, FlowNodeData } from "@/types/chatbot";
-import { getDefaultNodeData } from "@/types/chatbot";
+import { getDefaultNodeData, BLOCK_FINISHERS } from "@/types/chatbot";
 import StepNode from "./StepNode";
 import GroupNode from "./GroupNode";
 import NodePalette from "./NodePalette";
@@ -211,9 +211,12 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
         const dist = Math.sqrt(Math.pow(draggedX - gx, 2) + Math.pow(draggedY - gy, 2));
 
         if (dist < DOCK_THRESHOLD * 2) {
-          // Merge into this group
+          // Check if group is sealed
           const groupData = node.data as unknown as FlowNodeData;
           const steps = [...(groupData.steps || [])];
+          if (steps.length > 0 && BLOCK_FINISHERS.includes(steps[steps.length - 1].type)) {
+            continue;
+          }
           steps.push(extractStepData(dragged as FlowNode));
 
           return nds
@@ -403,6 +406,10 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
           if (n.id === groupId) {
             const groupData = n.data as unknown as FlowNodeData;
             const steps = [...(groupData.steps || [])];
+            // Block if sealed
+            if (steps.length > 0 && BLOCK_FINISHERS.includes(steps[steps.length - 1].type)) {
+              return n;
+            }
             const newStep = getDefaultNodeData("sendText");
             newStep.stepId = `step_${Date.now()}`;
             steps.push(newStep);

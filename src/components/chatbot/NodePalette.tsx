@@ -3,6 +3,7 @@ import { nodeTypeConfig, categoryLabels, type FlowNodeType } from "@/types/chatb
 import {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
   GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
+  MessageCircle, MousePointerClick,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { FC } from "react";
@@ -10,6 +11,7 @@ import type { FC } from "react";
 const iconMap: Record<string, FC<{ className?: string }>> = {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
   GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
+  MessageCircle, MousePointerClick,
 };
 
 const grouped = Object.entries(nodeTypeConfig).reduce<Record<string, { type: FlowNodeType; label: string; icon: string; color: string; description: string }[]>>(

@@ -15,7 +15,9 @@ export type FlowNodeType =
   | "closeChat"
   | "setTag"
   | "httpRequest"
-  | "aiResponse";
+  | "aiResponse"
+  | "waitMessage"
+  | "waitClick";
 
 export interface FlowNodeData {
   type: FlowNodeType;
@@ -86,7 +88,11 @@ export const nodeTypeConfig: Record<FlowNodeType, NodeTypeConfig> = {
   setTag:       { label: "Adicionar Tag",   color: "hsl(120 40% 50%)",  icon: "Tag",          category: "action",     description: "Marca o contato" },
   httpRequest:  { label: "HTTP Request",    color: "hsl(20 70% 50%)",   icon: "Globe",        category: "action",     description: "Chamada HTTP externa" },
   aiResponse:   { label: "Resposta IA",     color: "hsl(270 70% 60%)",  icon: "Sparkles",     category: "ai",         description: "Gera resposta com IA" },
+  waitMessage:  { label: "Esperar Mensagem",color: "hsl(200 50% 50%)",  icon: "MessageCircle",category: "logic",      description: "Aguarda resposta do contato" },
+  waitClick:    { label: "Aguardar Clique", color: "hsl(35 70% 50%)",   icon: "MousePointerClick", category: "logic", description: "Aguarda clique no link" },
 };
+
+export const BLOCK_FINISHERS: FlowNodeType[] = ["waitMessage", "waitClick"];
 
 export const categoryLabels: Record<string, string> = {
   trigger: "Gatilhos",
@@ -151,6 +157,10 @@ export function getDefaultNodeData(type: FlowNodeType): FlowNodeData {
       return { ...base, httpUrl: "", httpMethod: "POST", httpBody: "", httpHeaders: "" };
     case "aiResponse":
       return { ...base, aiPrompt: "", aiModel: "google/gemini-2.5-flash", aiTemperature: 0.7, aiMaxTokens: 1024 };
+    case "waitMessage":
+      return base;
+    case "waitClick":
+      return { ...base, httpUrl: "" };
     default:
       return base;
   }

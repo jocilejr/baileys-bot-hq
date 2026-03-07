@@ -1,19 +1,21 @@
 import { memo, useState, useCallback, type FC } from "react";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import type { FlowNodeData } from "@/types/chatbot";
-import { nodeTypeConfig, formatDelay } from "@/types/chatbot";
+import { nodeTypeConfig, formatDelay, BLOCK_FINISHERS } from "@/types/chatbot";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
   GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
   GripVertical, Ungroup, Plus, Trash2, ChevronUp, ChevronDown,
+  MessageCircle, MousePointerClick,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const iconMap: Record<string, FC<{ className?: string }>> = {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
   GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
+  MessageCircle, MousePointerClick,
 };
 
 function StepBubble({
@@ -21,6 +23,7 @@ function StepBubble({
   index,
   totalSteps,
   isSelected,
+  isFinisher,
   onSelect,
   onDelete,
   onMoveUp,
@@ -30,6 +33,7 @@ function StepBubble({
   index: number;
   totalSteps: number;
   isSelected: boolean;
+  isFinisher: boolean;
   onSelect: () => void;
   onDelete: () => void;
   onMoveUp: () => void;
@@ -80,9 +84,11 @@ function StepBubble({
     <div
       className={cn(
         "group/bubble flex items-center gap-1.5 px-1.5 py-2 rounded-lg cursor-pointer transition-all",
-        isSelected
-          ? "bg-primary/20 ring-1 ring-primary/40"
-          : "bg-muted/30 hover:bg-muted/50"
+        isFinisher
+          ? "bg-amber-500/10 border border-dashed border-amber-500/40 ring-0"
+          : isSelected
+            ? "bg-primary/20 ring-1 ring-primary/40"
+            : "bg-muted/30 hover:bg-muted/50"
       )}
       onClick={(e) => {
         e.stopPropagation();
@@ -183,6 +189,7 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
   const title = nodeData.groupTitle || nodeData.label || "Grupo";
   const steps = nodeData.steps || [];
   const defaultDelay = nodeData.defaultDelay || 3000;
+  const isSealed = steps.length > 0 && BLOCK_FINISHERS.includes(steps[steps.length - 1].type);
 
   const emitEvent = useCallback((eventName: string, detail: Record<string, unknown>) => {
     document.dispatchEvent(new CustomEvent(eventName, { detail }));
@@ -257,6 +264,7 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
                 index={i}
                 totalSteps={steps.length}
                 isSelected={false}
+                isFinisher={BLOCK_FINISHERS.includes(step.type)}
                 onSelect={() => {
                   emitEvent("group-step-select", { groupId: id, stepIndex: i, stepData: step });
                 }}
@@ -277,21 +285,23 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
           ))
         )}
 
-        {/* Add step button */}
-        <div className="pt-1.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full h-7 text-[10px] text-muted-foreground hover:text-foreground border border-dashed border-border/50 hover:border-border"
-            onClick={(e) => {
-              e.stopPropagation();
-              emitEvent("group-add-step", { groupId: id });
-            }}
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Adicionar passo
-          </Button>
-        </div>
+        {/* Add step button - hidden when sealed */}
+        {!isSealed && (
+          <div className="pt-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full h-7 text-[10px] text-muted-foreground hover:text-foreground border border-dashed border-border/50 hover:border-border"
+              onClick={(e) => {
+                e.stopPropagation();
+                emitEvent("group-add-step", { groupId: id });
+              }}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Adicionar passo
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Source handle - right */}
