@@ -1,35 +1,68 @@
 
 
-# Plano: Nova abordagem para sincronizar o instalador
+## Problema raiz
 
-## Diagnóstico
+O Supabase Docker cria roles internas (`supabase_admin`, `supabase_auth_admin`, etc.) com senhas definidas na **inicialização**. Quando você gera uma nova `POSTGRES_PASSWORD` e coloca no `.env`, os containers tentam conectar com a senha nova, mas o banco já foi criado com a senha padrão (ou anterior). Resultado: falha de autenticação em cascata.
 
-O `install.sh` no Lovable está correto (v2.0.1), mas o sync do Lovable para o GitHub **não está detectando as mudanças neste arquivo**. O `git pull` só trouxe `.lovable/plan.md`. Isso indica que o Lovable pode ter um cache ou snapshot antigo do `install.sh` e não reconhece que ele mudou.
+A solução correta é **não tentar resetar senhas depois** — em vez disso, configurar o `.env` **antes** do primeiro `docker compose up`, e garantir que se o banco já existir, recriá-lo do zero.
 
-## Nova Abordagem
+## Plano: Reescrever `install.sh` com correções
 
-Em vez de editar o `install.sh` existente (que claramente não está sendo sincronizado), vou:
+### Mudanças principais
 
-1. **Deletar o `install.sh` atual** e **recriar do zero** com um nome/conteúdo completo usando `write_file` — isso força o Lovable a tratar como arquivo novo e incluir no próximo commit/push.
+1. **Destruir volumes existentes antes de subir** — Antes do `docker compose up -d`, executar `docker compose down -v` para garantir que o banco seja criado limpo com as novas senhas.
 
-2. Se isso ainda não funcionar, **criar um arquivo alternativo** como `deploy.sh` com todo o conteúdo correto, que será um arquivo 100% novo e garantidamente sincronizado.
+2. **Usar a senha padrão do Supabase para roles internas** — O Supabase Docker usa a variável `POSTGRES_PASSWORD` do `.env` para configurar **todas** as roles internas automaticamente no primeiro boot. O problema atual é que o volume antigo persiste com senhas antigas. O `down -v` resolve isso.
 
-## Mudanças
+3. **Aguardar o Auth ficar pronto** — Após o `docker compose up -d`, verificar não só o REST API (porta 8000), mas também o Auth service antes de rodar migrations e criar o admin.
 
-### Deletar e recriar `install.sh`
-- Usar `write_file` para sobrescrever completamente o arquivo com o conteúdo correto (v2.0.1 Supabase Self-Hosted)
-- Todo o conteúdo será escrito de uma vez, sem edições parciais
+4. **Migrations via REST API em vez de `psql` direto** — Usar `curl` contra o endpoint do Supabase com `SERVICE_ROLE_KEY` para evitar problemas de conexão direta ao container PostgreSQL. Alternativamente, manter o `psql` via `docker exec` mas usando o usuário `supabase_admin` (que funcionará porque o banco será criado limpo).
 
-### Plano B: `deploy.sh` (se install.sh continuar sem sync)
-- Criar arquivo novo `deploy.sh` com conteúdo idêntico
-- Na VPS: `chmod +x deploy.sh && sudo ./deploy.sh`
+5. **Script `setup-admin.ts` não precisa de mudança** — Ele já usa a API do Supabase Auth Admin corretamente.
 
-## Após implementação
+### Bloco de mudança no `install.sh` (seção Supabase)
+
+Substituir a seção de Supabase por:
+
+```text
+# Limpar instalação anterior (se houver)
+cd $SUPABASE_DIR/docker
+docker compose down -v 2>/dev/null || true
+
+# Configurar .env ANTES do primeiro boot
+cp .env.example .env
+sed -i ... (todas as substituições de senha/URL)
+
+# Subir containers (banco será criado do zero com senhas corretas)
+docker compose up -d
+
+# Aguardar PostgREST + Auth
+until curl -sf http://localhost:8000/rest/v1/ ...
+until curl -sf http://localhost:8000/auth/v1/health ...
+
+# Migrations via docker exec com supabase_admin (agora funciona)
+docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/init.sql
+```
+
+### Correção do trigger `on_auth_user_created`
+
+O `init.sql` cria um trigger em `auth.users`, que é um schema reservado do Supabase. Isso pode causar problemas. Mover para ser criado **após** o Supabase estar completamente inicializado, ou verificar se já existe antes de criar.
+
+### Arquivos a modificar
+
+- **`install.sh`** — Reescrever seção Supabase com `docker compose down -v` antes de subir, e melhor detecção de "pronto".
+- **`deploy.sh`** — Mesmas mudanças (é uma cópia do install.sh).
+- **`migrations/init.sql`** — Adicionar `IF NOT EXISTS` nos CREATE TYPE/TABLE e tratar o trigger `on_auth_user_created` com `DROP TRIGGER IF EXISTS` antes de criar.
+
+### Solução imediata para o servidor atual
+
+Para o servidor que já está rodando, a solução mais rápida seria:
 
 ```bash
-cd ~/baileys-bot-hq
-git pull
-ls -la install.sh deploy.sh  # ver qual existe
-head -5 install.sh            # confirmar versão
+cd /opt/supabase/docker
+docker compose down -v    # Remove volumes (APAGA o banco)
+docker compose up -d      # Recria tudo com senhas do .env
 ```
+
+Isso funciona porque o `.env` já está configurado com as senhas corretas — o problema é apenas que o banco foi criado com senhas diferentes.
 
