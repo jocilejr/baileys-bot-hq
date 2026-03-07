@@ -700,22 +700,22 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
           deleteKeyCode={["Backspace", "Delete"]}
           proOptions={{ hideAttribution: true }}
         >
-          <Background variant={BackgroundVariant.Dots} gap={20} size={1} className="!bg-background" />
-          <Controls className="!bg-card !border-border !rounded-lg !shadow-lg [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-secondary" />
+          <Background variant={BackgroundVariant.Dots} gap={24} size={0.5} color="hsl(230 20% 14%)" className="!bg-background" />
+          <Controls className="!bg-card !border-border !rounded-xl !shadow-2xl [&>button]:!bg-card [&>button]:!border-border [&>button]:!text-foreground [&>button:hover]:!bg-secondary" />
           <MiniMap
-            className="!bg-card !border-border !rounded-lg"
+            className="!bg-card !border-border !rounded-xl !shadow-2xl"
             nodeColor={() => "hsl(var(--primary))"}
-            maskColor="hsl(var(--background) / 0.8)"
+            maskColor="hsl(var(--background) / 0.85)"
           />
 
-          <Panel position="top-left" className="flex items-center gap-2">
+          <Panel position="top-left" className="flex items-center gap-2 bg-card/80 backdrop-blur-xl border border-border rounded-xl px-2 py-1.5 shadow-2xl">
             <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onBack}>
               <ArrowLeft className="h-4 w-4" />
             </Button>
-            <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 w-48 text-sm bg-card border-border" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 w-48 text-sm bg-secondary/50 border-border/50 focus:border-primary/40" />
           </Panel>
 
-          <Panel position="top-right" className="flex items-center gap-2">
+          <Panel position="top-right" className="flex items-center gap-2 bg-card/80 backdrop-blur-xl border border-border rounded-xl px-2 py-1.5 shadow-2xl">
             {saveStatus === "saving" && (
               <span className="flex items-center gap-1 text-[11px] text-muted-foreground">
                 <Loader2 className="h-3 w-3 animate-spin" /> Salvando...
@@ -808,7 +808,7 @@ function FlowEditorInner({ flowId, flowName, initialNodes, initialEdges, onBack,
       {contextMenu && (<>
         <div className="fixed inset-0 z-[99]" onClick={() => setContextMenu(null)} onContextMenu={(e) => { e.preventDefault(); setContextMenu(null); }} />
         <div
-          className="fixed z-[100] w-64 max-h-[70vh] overflow-y-auto bg-card border border-border rounded-xl shadow-2xl p-2 space-y-3 animate-in fade-in-0 zoom-in-95"
+          className="fixed z-[100] w-64 max-h-[70vh] overflow-y-auto bg-card/95 backdrop-blur-xl border border-border rounded-xl shadow-[0_8px_40px_rgba(0,0,0,0.5)] p-2 space-y-3 animate-in fade-in-0 zoom-in-95"
           style={{ top: contextMenu.y, left: contextMenu.x }}
           onClick={(e) => e.stopPropagation()}
         >
