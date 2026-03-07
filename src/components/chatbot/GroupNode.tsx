@@ -264,6 +264,7 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
                 index={i}
                 totalSteps={steps.length}
                 isSelected={false}
+                isFinisher={BLOCK_FINISHERS.includes(step.type)}
                 onSelect={() => {
                   emitEvent("group-step-select", { groupId: id, stepIndex: i, stepData: step });
                 }}
@@ -284,21 +285,23 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
           ))
         )}
 
-        {/* Add step button */}
-        <div className="pt-1.5">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="w-full h-7 text-[10px] text-muted-foreground hover:text-foreground border border-dashed border-border/50 hover:border-border"
-            onClick={(e) => {
-              e.stopPropagation();
-              emitEvent("group-add-step", { groupId: id });
-            }}
-          >
-            <Plus className="h-3 w-3 mr-1" />
-            Adicionar passo
-          </Button>
-        </div>
+        {/* Add step button - hidden when sealed */}
+        {!isSealed && (
+          <div className="pt-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              className="w-full h-7 text-[10px] text-muted-foreground hover:text-foreground border border-dashed border-border/50 hover:border-border"
+              onClick={(e) => {
+                e.stopPropagation();
+                emitEvent("group-add-step", { groupId: id });
+              }}
+            >
+              <Plus className="h-3 w-3 mr-1" />
+              Adicionar passo
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Source handle - right */}

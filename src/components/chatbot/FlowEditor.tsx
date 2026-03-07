@@ -13,7 +13,7 @@ import {
 import "@xyflow/react/dist/style.css";
 
 import type { FlowNodeType, FlowNodeData } from "@/types/chatbot";
-import { getDefaultNodeData } from "@/types/chatbot";
+import { getDefaultNodeData, BLOCK_FINISHERS } from "@/types/chatbot";
 import StepNode from "./StepNode";
 import GroupNode from "./GroupNode";
 import NodePalette from "./NodePalette";
