@@ -4,13 +4,15 @@ import {
   Users,
   GitBranch,
   Send,
-  Smartphone,
   Settings,
   Zap,
+  LogOut,
 } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useInstances } from "@/hooks/useInstances";
+import { supabase } from "@/integrations/supabase/client";
+import { Button } from "@/components/ui/button";
 import {
   Sidebar,
   SidebarContent,
@@ -31,7 +33,6 @@ const mainItems = [
   { title: "Contatos", url: "/contatos", icon: Users },
   { title: "Automações", url: "/automacoes", icon: GitBranch },
   { title: "Disparos", url: "/disparos", icon: Send },
-  { title: "Instâncias", url: "/instancias", icon: Smartphone },
 ];
 
 const configItems = [
@@ -42,10 +43,16 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === "collapsed";
   const location = useLocation();
+  const navigate = useNavigate();
   const { data: instances } = useInstances();
   const onlineCount = instances?.filter((i) => i.status === "connected").length ?? 0;
   const isActive = (path: string) =>
     path === "/" ? location.pathname === "/" : location.pathname.startsWith(path);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    navigate("/login");
+  };
 
   return (
     <Sidebar collapsible="icon" className="border-r border-sidebar-border">
@@ -69,10 +76,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {mainItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(item.url)}
-                  >
+                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink
                       to={item.url}
                       end={item.url === "/"}
@@ -95,10 +99,7 @@ export function AppSidebar() {
             <SidebarMenu>
               {configItems.map((item) => (
                 <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton
-                    asChild
-                    isActive={isActive(item.url)}
-                  >
+                  <SidebarMenuButton asChild isActive={isActive(item.url)}>
                     <NavLink
                       to={item.url}
                       className="hover:bg-sidebar-accent/50"
@@ -115,13 +116,22 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
 
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 space-y-2">
         {!collapsed && (
           <div className="flex items-center gap-2 rounded-lg bg-secondary p-2">
             <div className={`h-2 w-2 rounded-full ${onlineCount > 0 ? "bg-success animate-pulse-dot" : "bg-destructive"}`} />
             <span className="text-xs text-muted-foreground">{onlineCount} instância{onlineCount !== 1 ? "s" : ""} online</span>
           </div>
         )}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="w-full justify-start text-muted-foreground hover:text-foreground"
+          onClick={handleLogout}
+        >
+          <LogOut className="h-4 w-4" />
+          {!collapsed && <span className="ml-2">Sair</span>}
+        </Button>
       </SidebarFooter>
     </Sidebar>
   );
