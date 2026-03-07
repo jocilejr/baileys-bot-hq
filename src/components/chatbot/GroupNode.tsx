@@ -353,7 +353,7 @@ const GroupNode = ({ data, selected, id }: GroupNodeProps) => {
         ) : (
           steps.map((step, i) => (
             <div key={step.stepId || i}>
-              {i > 0 && (
+              {i > 0 && step.type === "delay" && (
                 <DelayIndicator delayMs={step.delayMs || defaultDelay} />
               )}
               <StepBubble
