@@ -22,6 +22,8 @@ export default function PropertiesPanel({ node, onChange, onDelete, onClose }: P
   const config = nodeTypeConfig[d.type];
   const update = (partial: Partial<FlowNodeData>) => onChange(node.id, partial);
 
+  if (!config) return null;
+
   return (
     <div className="w-72 border-l bg-card flex flex-col h-full">
       <div className="flex items-center justify-between px-3 py-2 border-b">
