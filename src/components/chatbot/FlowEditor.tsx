@@ -12,8 +12,8 @@ import {
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
 
-import type { FlowNodeType, FlowNodeData } from "@/types/chatbot";
-import { getDefaultNodeData, BLOCK_FINISHERS } from "@/types/chatbot";
+import type { FlowNodeType, FlowNodeData, FlowStepData } from "@/types/chatbot";
+import { getDefaultNodeData, FINALIZER_TYPES } from "@/types/chatbot";
 import StepNode from "./StepNode";
 import GroupNode from "./GroupNode";
 import NodePalette from "./NodePalette";
@@ -37,10 +37,10 @@ interface Props {
   onBack: () => void;
 }
 
-// Helper: extract FlowNodeData from a node
-function extractStepData(node: FlowNode): FlowNodeData {
+// Helper: extract FlowStepData from a node
+function extractStepData(node: FlowNode): FlowStepData {
   const d = node.data as unknown as FlowNodeData;
-  return { ...d, stepId: node.id };
+  return { id: node.id, data: { ...d } };
 }
 
 export default function FlowEditor({ flowId, flowName, initialNodes, initialEdges, onSave, onBack }: Props) {
@@ -53,21 +53,21 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
   const rfInstance = useRef<ReactFlowInstance | null>(null);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
-  // Derive selectedNode - either a real node or a virtual step inside a group
+  // Derive selectedNode
   const selectedNode = (() => {
     if (selectedStepContext) {
       const group = nodes.find((n) => n.id === selectedStepContext.groupId);
       if (group) {
         const groupData = group.data as unknown as FlowNodeData;
-        const step = groupData.steps?.[selectedStepContext.stepIndex];
+        const steps = (groupData.steps as FlowStepData[]) || [];
+        const step = steps[selectedStepContext.stepIndex];
         if (step) {
-          // Create a virtual FlowNode for the properties panel
           return {
-            id: step.stepId || `${selectedStepContext.groupId}_step_${selectedStepContext.stepIndex}`,
+            id: step.id,
             type: "stepNode",
             position: { x: 0, y: 0 },
-            data: step,
-          } as FlowNode;
+            data: step.data,
+          } as unknown as FlowNode;
         }
       }
     }
@@ -117,14 +117,14 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
   }, []);
 
   const handleNodeDataChange = useCallback((id: string, partial: Partial<FlowNodeData>) => {
-    // Check if this is a step inside a group
     if (selectedStepContext) {
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id === selectedStepContext.groupId) {
             const groupData = n.data as unknown as FlowNodeData;
-            const steps = [...(groupData.steps || [])];
-            steps[selectedStepContext.stepIndex] = { ...steps[selectedStepContext.stepIndex], ...partial };
+            const steps = [...((groupData.steps as FlowStepData[]) || [])];
+            const step = steps[selectedStepContext.stepIndex];
+            steps[selectedStepContext.stepIndex] = { ...step, data: { ...step.data, ...partial } };
             return { ...n, data: { ...n.data, steps } };
           }
           return n;
@@ -138,26 +138,17 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
   }, [setNodes, selectedStepContext]);
 
   const handleDeleteNode = useCallback((id: string) => {
-    // If deleting a step inside a group
     if (selectedStepContext) {
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id === selectedStepContext.groupId) {
             const groupData = n.data as unknown as FlowNodeData;
-            const steps = [...(groupData.steps || [])];
+            const steps = [...((groupData.steps as FlowStepData[]) || [])];
             steps.splice(selectedStepContext.stepIndex, 1);
-            // If group becomes empty, remove it
-            if (steps.length === 0) {
-              return null as any;
-            }
-            // If only 1 step left, convert back to standalone node
+            if (steps.length === 0) return null as any;
             if (steps.length === 1) {
               const step = steps[0];
-              return {
-                ...n,
-                type: "stepNode",
-                data: { ...step, stepId: undefined } as any,
-              };
+              return { ...n, type: "stepNode", data: step.data as any };
             }
             return { ...n, data: { ...n.data, steps } };
           }
@@ -169,20 +160,19 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
       return;
     }
 
-    // If deleting a group, restore steps as individual nodes
     setNodes((nds) => {
       const group = nds.find((n) => n.id === id);
       if (group?.type === "groupNode") {
         const groupData = group.data as unknown as FlowNodeData;
-        const steps = groupData.steps || [];
+        const steps = (groupData.steps as FlowStepData[]) || [];
         const newNodes = steps.map((step, i) => ({
-          id: step.stepId || `restored_${Date.now()}_${i}`,
+          id: step.id,
           type: "stepNode" as const,
           position: {
             x: (group.position?.x || 0) + 20,
             y: (group.position?.y || 0) + i * 100,
           },
-          data: { ...step, stepId: undefined } as any,
+          data: step.data as any,
         }));
         return [...nds.filter((n) => n.id !== id), ...newNodes];
       }
@@ -192,7 +182,7 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
     setSelectedNodeId(null);
   }, [setNodes, setEdges, selectedStepContext]);
 
-  // Docking: when a stepNode is dropped near another stepNode or groupNode
+  // Docking
   const onNodeDragStop = useCallback((_event: any, draggedNode: any) => {
     if (draggedNode.type !== "stepNode") return;
 
@@ -203,41 +193,28 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
       const draggedX = dragged.position.x;
       const draggedY = dragged.position.y;
 
-      // Check if near an existing group
+      // Check near existing group
       for (const node of nds) {
         if (node.type !== "groupNode" || node.id === dragged.id) continue;
-        const gx = node.position.x;
-        const gy = node.position.y;
-        const dist = Math.sqrt(Math.pow(draggedX - gx, 2) + Math.pow(draggedY - gy, 2));
+        const dist = Math.sqrt(Math.pow(draggedX - node.position.x, 2) + Math.pow(draggedY - node.position.y, 2));
 
         if (dist < DOCK_THRESHOLD * 2) {
-          // Check if group is sealed
           const groupData = node.data as unknown as FlowNodeData;
-          const steps = [...(groupData.steps || [])];
-          if (steps.length > 0 && BLOCK_FINISHERS.includes(steps[steps.length - 1].type)) {
-            continue;
-          }
+          const steps = [...((groupData.steps as FlowStepData[]) || [])];
+          if (steps.length > 0 && FINALIZER_TYPES.includes(steps[steps.length - 1].data.type)) continue;
           steps.push(extractStepData(dragged as FlowNode));
 
           return nds
             .filter((n) => n.id !== dragged.id)
-            .map((n) => {
-              if (n.id === node.id) {
-                return { ...n, data: { ...n.data, steps } };
-              }
-              return n;
-            });
+            .map((n) => (n.id === node.id ? { ...n, data: { ...n.data, steps } } : n));
         }
       }
 
-      // Check if near another stepNode to create a new group
+      // Check near another stepNode
       for (const node of nds) {
         if (node.id === dragged.id || node.type !== "stepNode") continue;
-        const dist = Math.sqrt(
-          Math.pow(draggedX - node.position.x, 2) + Math.pow(draggedY - node.position.y, 2)
-        );
+        const dist = Math.sqrt(Math.pow(draggedX - node.position.x, 2) + Math.pow(draggedY - node.position.y, 2));
         if (dist < DOCK_THRESHOLD) {
-          // Create group from both nodes
           const groupId = `group_${Date.now()}`;
           const midX = Math.min(draggedX, node.position.x);
           const midY = Math.min(draggedY, node.position.y);
@@ -250,32 +227,20 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
             type: "groupNode",
             position: { x: midX, y: midY },
             data: {
-              type: "group",
+              type: "trigger", // placeholder, not used for groups
               label: "Grupo",
               groupTitle: "Novo Grupo",
               steps: [step1, step2],
             } as any,
           };
 
-          // Transfer edges from old nodes to group
-          // We'll handle this separately via edges
-
-          return [
-            ...nds.filter((n) => n.id !== dragged.id && n.id !== node.id),
-            groupNode,
-          ];
+          return [...nds.filter((n) => n.id !== dragged.id && n.id !== node.id), groupNode];
         }
       }
 
       return nds;
     });
-
-    // Transfer edges when grouping
-    setEdges((eds) => {
-      // This will be handled by the nodes state update
-      return eds;
-    });
-  }, [setNodes, setEdges]);
+  }, [setNodes]);
 
   // Listen for ungroup events
   useEffect(() => {
@@ -285,16 +250,16 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
         const group = nds.find((n) => n.id === groupId);
         if (!group) return nds;
         const groupData = group.data as unknown as FlowNodeData;
-        const steps = groupData.steps || [];
+        const steps = (groupData.steps as FlowStepData[]) || [];
 
         const newNodes = steps.map((step, i) => ({
-          id: step.stepId || `ungrouped_${Date.now()}_${i}`,
+          id: step.id || `ungrouped_${Date.now()}_${i}`,
           type: "stepNode" as const,
           position: {
             x: (group.position?.x || 0) + 20,
             y: (group.position?.y || 0) + i * 100,
           },
-          data: { ...step, stepId: undefined } as any,
+          data: step.data as any,
         }));
 
         return [...nds.filter((n) => n.id !== groupId), ...newNodes];
@@ -336,35 +301,32 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
         if (!group) return nds;
 
         const groupData = group.data as unknown as FlowNodeData;
-        const steps = [...(groupData.steps || [])];
+        const steps = [...((groupData.steps as FlowStepData[]) || [])];
         const removed = steps.splice(stepIndex, 1)[0];
 
-        // Create restored standalone node
         const restoredNode: FlowNode = {
-          id: removed.stepId || `restored_${Date.now()}`,
+          id: removed.id || `restored_${Date.now()}`,
           type: "stepNode",
           position: {
             x: (group.position?.x || 0) + 340,
             y: (group.position?.y || 0) + stepIndex * 80,
           },
-          data: { ...removed, stepId: undefined } as any,
+          data: removed.data as any,
         };
 
         let updatedNodes = nds.filter((n) => n.id !== groupId);
 
         if (steps.length === 0) {
-          // Group empty - just add restored
+          // empty
         } else if (steps.length === 1) {
-          // Convert last step back to standalone
           const lastStep = steps[0];
           updatedNodes.push({
-            id: lastStep.stepId || groupId,
+            id: lastStep.id || groupId,
             type: "stepNode",
             position: { x: group.position?.x || 0, y: group.position?.y || 0 },
-            data: { ...lastStep, stepId: undefined } as any,
+            data: lastStep.data as any,
           } as FlowNode);
         } else {
-          // Keep group with remaining steps
           updatedNodes.push({ ...group, data: { ...group.data, steps } } as FlowNode);
         }
 
@@ -384,16 +346,10 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
         nds.map((n) => {
           if (n.id === groupId) {
             const groupData = n.data as unknown as FlowNodeData;
-            const steps = [...(groupData.steps || [])];
+            const steps = [...((groupData.steps as FlowStepData[]) || [])];
             const movingStep = steps[fromIndex as number];
-            // Prevent moving a finisher away from the last position
-            if (BLOCK_FINISHERS.includes(movingStep.type) && (toIndex as number) < steps.length - 1) {
-              return n;
-            }
-            // Prevent moving a step below a finisher (finisher must stay last)
-            if ((toIndex as number) === steps.length - 1 && BLOCK_FINISHERS.includes(steps[steps.length - 1].type) && (fromIndex as number) !== steps.length - 1) {
-              return n;
-            }
+            if (FINALIZER_TYPES.includes(movingStep.data.type) && (toIndex as number) < steps.length - 1) return n;
+            if ((toIndex as number) === steps.length - 1 && FINALIZER_TYPES.includes(steps[steps.length - 1].data.type) && (fromIndex as number) !== steps.length - 1) return n;
             const [moved] = steps.splice(fromIndex as number, 1);
             steps.splice(toIndex as number, 0, moved);
             return { ...n, data: { ...n.data, steps } };
@@ -406,21 +362,21 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
     return () => document.removeEventListener("group-step-reorder", handler);
   }, [setNodes]);
 
-  // Listen for add step to group
+  // Listen for add step to group (with stepType from popover)
   useEffect(() => {
     const handler = (e: Event) => {
-      const { groupId } = (e as CustomEvent).detail;
+      const { groupId, stepType } = (e as CustomEvent).detail;
+      const type = (stepType || "sendText") as FlowNodeType;
       setNodes((nds) =>
         nds.map((n) => {
           if (n.id === groupId) {
             const groupData = n.data as unknown as FlowNodeData;
-            const steps = [...(groupData.steps || [])];
-            // Block if sealed
-            if (steps.length > 0 && BLOCK_FINISHERS.includes(steps[steps.length - 1].type)) {
-              return n;
-            }
-            const newStep = getDefaultNodeData("sendText");
-            newStep.stepId = `step_${Date.now()}`;
+            const steps = [...((groupData.steps as FlowStepData[]) || [])];
+            if (steps.length > 0 && FINALIZER_TYPES.includes(steps[steps.length - 1].data.type)) return n;
+            const newStep: FlowStepData = {
+              id: `step_${Date.now()}`,
+              data: getDefaultNodeData(type),
+            };
             steps.push(newStep);
             return { ...n, data: { ...n.data, steps } };
           }
@@ -430,6 +386,32 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
     };
     document.addEventListener("group-add-step", handler);
     return () => document.removeEventListener("group-add-step", handler);
+  }, [setNodes]);
+
+  // Listen for duplicate step in group
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { groupId, stepIndex } = (e as CustomEvent).detail;
+      setNodes((nds) =>
+        nds.map((n) => {
+          if (n.id === groupId) {
+            const groupData = n.data as unknown as FlowNodeData;
+            const steps = [...((groupData.steps as FlowStepData[]) || [])];
+            const original = steps[stepIndex as number];
+            if (!original) return n;
+            const clone: FlowStepData = {
+              id: `step_${Date.now()}`,
+              data: { ...original.data },
+            };
+            steps.splice((stepIndex as number) + 1, 0, clone);
+            return { ...n, data: { ...n.data, steps } };
+          }
+          return n;
+        })
+      );
+    };
+    document.addEventListener("group-duplicate-step", handler);
+    return () => document.removeEventListener("group-duplicate-step", handler);
   }, [setNodes]);
 
   const handleSave = async () => {
@@ -451,11 +433,7 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={onBack}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <Input
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="h-8 w-64 text-sm font-medium"
-        />
+        <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 w-64 text-sm font-medium" />
         <div className="flex-1" />
         <Button size="sm" className="h-8" onClick={handleSave} disabled={saving}>
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" /> : <Save className="h-3.5 w-3.5 mr-1" />}
@@ -465,12 +443,10 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
 
       {/* Body */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Palette */}
         <div className="w-56 border-r bg-card flex-shrink-0">
           <NodePalette />
         </div>
 
-        {/* Canvas */}
         <div className="flex-1" ref={wrapperRef}>
           <ReactFlow
             nodes={nodes}
@@ -496,7 +472,6 @@ export default function FlowEditor({ flowId, flowName, initialNodes, initialEdge
           </ReactFlow>
         </div>
 
-        {/* Properties */}
         {selectedNode && (
           <PropertiesPanel
             node={selectedNode}

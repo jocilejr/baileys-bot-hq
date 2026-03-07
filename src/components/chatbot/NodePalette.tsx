@@ -2,7 +2,7 @@ import { type DragEvent } from "react";
 import { nodeTypeConfig, categoryLabels, type FlowNodeType } from "@/types/chatbot";
 import {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
-  GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
+  GitBranch, Clock, Sparkles, Cog, Shuffle,
   MessageCircle, MousePointerClick,
 } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -10,7 +10,7 @@ import type { FC } from "react";
 
 const iconMap: Record<string, FC<{ className?: string }>> = {
   Zap, MessageSquare, Image, Mic, Video, FileText, LayoutGrid, List,
-  GitBranch, Clock, UserPlus, XCircle, Tag, Globe, Sparkles, Group,
+  GitBranch, Clock, Sparkles, Cog, Shuffle,
   MessageCircle, MousePointerClick,
 };
 
