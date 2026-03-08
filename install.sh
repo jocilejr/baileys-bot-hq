@@ -264,6 +264,27 @@ until docker compose exec -T db pg_isready -U postgres > /dev/null 2>&1; do
 done
 echo "  ✅ Banco de dados pronto"
 
+# Reset internal role passwords to match current POSTGRES_PASSWORD
+echo "  🔧 Sincronizando senhas dos roles internos..."
+docker compose exec -T db psql -U supabase_admin -d postgres -c "
+  ALTER ROLE supabase_auth_admin WITH PASSWORD '$POSTGRES_PASSWORD';
+  ALTER ROLE supabase_storage_admin WITH PASSWORD '$POSTGRES_PASSWORD';
+  ALTER ROLE supabase_admin WITH PASSWORD '$POSTGRES_PASSWORD';
+  ALTER ROLE supabase_replication_admin WITH PASSWORD '$POSTGRES_PASSWORD';
+  ALTER ROLE supabase_read_only_user WITH PASSWORD '$POSTGRES_PASSWORD';
+" 2>/dev/null || {
+  # Fallback: try as postgres user
+  docker compose exec -T db psql -U postgres -d postgres -c "
+    ALTER ROLE supabase_auth_admin WITH PASSWORD '$POSTGRES_PASSWORD';
+    ALTER ROLE supabase_storage_admin WITH PASSWORD '$POSTGRES_PASSWORD';
+    ALTER ROLE supabase_admin WITH PASSWORD '$POSTGRES_PASSWORD';
+  "
+}
+echo "  ✅ Senhas sincronizadas"
+
+# Restart auth and storage so they pick up the corrected passwords
+docker compose restart auth storage
+
 # Wait for auth service via Kong endpoint
 echo "  ⏳ Aguardando serviço de autenticação..."
 RETRY=0
