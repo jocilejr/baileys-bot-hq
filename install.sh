@@ -264,31 +264,33 @@ until docker compose exec -T db pg_isready -U postgres > /dev/null 2>&1; do
 done
 echo "  ✅ Banco de dados pronto"
 
-# Wait for auth service
+# Wait for auth service via Kong endpoint
 echo "  ⏳ Aguardando serviço de autenticação..."
 RETRY=0
-until docker compose exec -T kong curl -sf http://auth:9999/health > /dev/null 2>&1; do
+until curl -sf http://localhost:8000/auth/v1/health > /dev/null 2>&1; do
   RETRY=$((RETRY+1))
-  if [ $RETRY -ge $MAX_RETRIES ]; then
-    echo "  ⚠️ Auth service demorou, mas continuando..."
-    break
+  if [ $RETRY -ge 90 ]; then
+    echo "  ❌ Auth service não ficou pronto em 180s"
+    echo "  Verifique: cd $SUPABASE_DIR/docker && docker compose logs auth"
+    exit 1
   fi
   sleep 2
 done
+echo "  ✅ Auth service pronto"
 
 # Wait for REST service (PostgREST)
 echo "  ⏳ Aguardando API REST..."
 RETRY=0
 until curl -sf http://localhost:8000/rest/v1/ -H "apikey: $ANON_KEY" > /dev/null 2>&1; do
   RETRY=$((RETRY+1))
-  if [ $RETRY -ge 30 ]; then
-    echo "  ⚠️ REST API demorou, mas continuando..."
-    break
+  if [ $RETRY -ge 90 ]; then
+    echo "  ❌ REST API não ficou pronta em 180s"
+    echo "  Verifique: cd $SUPABASE_DIR/docker && docker compose logs rest"
+    exit 1
   fi
   sleep 2
 done
-
-echo "  ✅ Supabase self-hosted rodando"
+echo "  ✅ REST API pronta"
 
 # ==================
 # 4. RUN MIGRATIONS
