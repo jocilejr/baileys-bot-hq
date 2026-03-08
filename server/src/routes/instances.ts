@@ -59,7 +59,7 @@ instancesRouter.post("/instances/:id/reconnect", async (req: Request, res: Respo
 });
 
 instancesRouter.get("/instances/:id/status", async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const status = baileysManager.getStatus(id);
 
   const { data } = await supabaseAdmin
