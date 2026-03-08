@@ -38,7 +38,7 @@ instancesRouter.post("/instances", async (req: Request, res: Response) => {
 });
 
 instancesRouter.delete("/instances/:id", async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   await baileysManager.stopSession(id);
 
