@@ -1,68 +1,145 @@
 
 
-## Problema raiz
+## Plano: Instalador 100% Autônomo do ZapManager
 
-O Supabase Docker cria roles internas (`supabase_admin`, `supabase_auth_admin`, etc.) com senhas definidas na **inicialização**. Quando você gera uma nova `POSTGRES_PASSWORD` e coloca no `.env`, os containers tentam conectar com a senha nova, mas o banco já foi criado com a senha padrão (ou anterior). Resultado: falha de autenticação em cascata.
+### Objetivo
 
-A solução correta é **não tentar resetar senhas depois** — em vez disso, configurar o `.env` **antes** do primeiro `docker compose up`, e garantir que se o banco já existir, recriá-lo do zero.
+Reescrever completamente o `install.sh` para que o sistema seja **totalmente independente**. O usuário fornece apenas 5 informações:
 
-## Plano: Reescrever `install.sh` com correções
+1. Dominio do frontend
+2. Dominio da API
+3. Email para SSL
+4. Email do admin
+5. Senha do admin
 
-### Mudanças principais
+Tudo mais (Supabase self-hosted, chaves, banco, migrations, Baileys) e configurado automaticamente.
 
-1. **Destruir volumes existentes antes de subir** — Antes do `docker compose up -d`, executar `docker compose down -v` para garantir que o banco seja criado limpo com as novas senhas.
+### Arquivos a criar/modificar
 
-2. **Usar a senha padrão do Supabase para roles internas** — O Supabase Docker usa a variável `POSTGRES_PASSWORD` do `.env` para configurar **todas** as roles internas automaticamente no primeiro boot. O problema atual é que o volume antigo persiste com senhas antigas. O `down -v` resolve isso.
+| Arquivo | Acao |
+|---|---|
+| `install.sh` | Reescrever completo |
+| `migrations/init.sql` | Criar com todas as tabelas, enums, RLS, triggers, funcoes |
+| `ecosystem.config.js` | Corrigir script path para producao |
+| `server/src/setup-admin.ts` | Adaptar para receber args via env (sem interativo) |
+| `.env.production.template` | Template para o frontend com variaveis do Supabase local |
 
-3. **Aguardar o Auth ficar pronto** — Após o `docker compose up -d`, verificar não só o REST API (porta 8000), mas também o Auth service antes de rodar migrations e criar o admin.
-
-4. **Migrations via REST API em vez de `psql` direto** — Usar `curl` contra o endpoint do Supabase com `SERVICE_ROLE_KEY` para evitar problemas de conexão direta ao container PostgreSQL. Alternativamente, manter o `psql` via `docker exec` mas usando o usuário `supabase_admin` (que funcionará porque o banco será criado limpo).
-
-5. **Script `setup-admin.ts` não precisa de mudança** — Ele já usa a API do Supabase Auth Admin corretamente.
-
-### Bloco de mudança no `install.sh` (seção Supabase)
-
-Substituir a seção de Supabase por:
+### Fluxo do instalador
 
 ```text
-# Limpar instalação anterior (se houver)
-cd $SUPABASE_DIR/docker
-docker compose down -v 2>/dev/null || true
+Entrada do usuario:
+  DOMAIN, API_DOMAIN, SSL_EMAIL, ADMIN_EMAIL, ADMIN_PASSWORD
 
-# Configurar .env ANTES do primeiro boot
-cp .env.example .env
-sed -i ... (todas as substituições de senha/URL)
-
-# Subir containers (banco será criado do zero com senhas corretas)
-docker compose up -d
-
-# Aguardar PostgREST + Auth
-until curl -sf http://localhost:8000/rest/v1/ ...
-until curl -sf http://localhost:8000/auth/v1/health ...
-
-# Migrations via docker exec com supabase_admin (agora funciona)
-docker exec supabase-db psql -U supabase_admin -d postgres -f /tmp/init.sql
+1. Instalar dependencias (Node 20, PM2, Nginx, Docker, Certbot)
+2. Clonar repositorio
+3. Instalar Supabase Docker self-hosted
+   a. git clone supabase/supabase -> /opt/supabase
+   b. Gerar senhas automaticas (POSTGRES_PASSWORD, JWT_SECRET, ANON_KEY, SERVICE_ROLE_KEY)
+   c. Configurar .env ANTES do primeiro boot
+   d. Desabilitar analytics (causa bloqueio)
+   e. docker compose up -d
+   f. Aguardar health checks (db, auth, rest)
+4. Executar migrations (init.sql) via docker exec com usuario postgres em modo trust temporario
+5. Configurar frontend (.env.production apontando para Supabase local)
+6. Build frontend
+7. Configurar backend (server/.env com keys locais)
+8. Build e instalar backend
+9. Criar admin automaticamente (sem interacao)
+10. Nginx (frontend + API + Supabase dashboard)
+11. SSL via Certbot
+12. PM2 start
 ```
 
-### Correção do trigger `on_auth_user_created`
+### Correcoes de bugs conhecidos
 
-O `init.sql` cria um trigger em `auth.users`, que é um schema reservado do Supabase. Isso pode causar problemas. Mover para ser criado **após** o Supabase estar completamente inicializado, ou verificar se já existe antes de criar.
+**1. Senha do PostgreSQL / roles internas**
 
-### Arquivos a modificar
+O Supabase Docker inicializa roles (`supabase_admin`, `supabase_auth_admin`) com a senha do `POSTGRES_PASSWORD` no primeiro boot. Se o volume ja existir com senha diferente, falha. Solucao:
 
-- **`install.sh`** — Reescrever seção Supabase com `docker compose down -v` antes de subir, e melhor detecção de "pronto".
-- **`deploy.sh`** — Mesmas mudanças (é uma cópia do install.sh).
-- **`migrations/init.sql`** — Adicionar `IF NOT EXISTS` nos CREATE TYPE/TABLE e tratar o trigger `on_auth_user_created` com `DROP TRIGGER IF EXISTS` antes de criar.
+- Sempre `docker compose down -v` antes do primeiro `up`
+- Gerar `POSTGRES_PASSWORD` automaticamente e injetar no `.env` ANTES do boot
+- Usar `pg_isready` para confirmar que o banco aceitou conexoes antes de rodar migrations
 
-### Solução imediata para o servidor atual
+**2. Analytics bloqueando servicos**
 
-Para o servidor que já está rodando, a solução mais rápida seria:
+O container `supabase-analytics` (Logflare) frequentemente falha e bloqueia kong/auth/rest por causa do `depends_on: condition: service_healthy`. Solucao:
+
+- Usar `sed` para trocar `service_healthy` por `service_started` no docker-compose.yml do Supabase
+- Opcionalmente desabilitar analytics completamente (nao e critico)
+
+**3. Geracao automatica de JWT keys**
+
+O Supabase precisa de `JWT_SECRET`, `ANON_KEY` e `SERVICE_ROLE_KEY`. Estas sao derivadas do JWT_SECRET usando payloads especificos. O instalador vai:
+
+- Gerar um `JWT_SECRET` aleatorio
+- Usar `node` inline para gerar `ANON_KEY` e `SERVICE_ROLE_KEY` com os payloads corretos do Supabase (`role: anon` e `role: service_role`)
+
+**4. Migration SQL robusta**
+
+Criar `migrations/init.sql` com:
+
+- `DO $$ ... IF NOT EXISTS` para todos os enums
+- `CREATE TABLE IF NOT EXISTS` para todas as tabelas
+- `DROP POLICY IF EXISTS` + `CREATE POLICY` para RLS
+- `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` para triggers
+- Funcoes com `CREATE OR REPLACE`
+- Nao criar trigger em `auth.users` diretamente (usar funcao do Supabase `handle_new_user` via API)
+
+**5. PM2 ecosystem corrigido**
+
+O `ecosystem.config.js` atual usa `--import tsx dist/index.js` que nao funciona em producao sem tsx instalado. Corrigir para usar o JS compilado diretamente ou garantir tsx como dependencia.
+
+### Detalhes tecnicos do init.sql
+
+Tabelas a criar (baseado no schema atual do Lovable Cloud):
+
+- `user_roles` (com enum `app_role`: admin, moderator, user, supervisor)
+- `profiles`
+- `instances` (com enum `instance_status`)
+- `contacts`
+- `conversations` (com enum `conversation_status`)
+- `messages` (com enum `message_status`, `message_direction`)
+- `campaigns` (com enum `campaign_status`)
+- `campaign_messages`
+- `automation_flows` (com enum `trigger_type`)
+- `quick_replies`
+- `settings`
+
+Funcoes: `update_updated_at_column`, `has_role`, `handle_new_user`
+Triggers: `updated_at` em todas as tabelas relevantes, `on_auth_user_created` em `auth.users`
+Storage bucket: `automation-media` (public)
+
+### Detalhes tecnicos da geracao de keys
 
 ```bash
-cd /opt/supabase/docker
-docker compose down -v    # Remove volumes (APAGA o banco)
-docker compose up -d      # Recria tudo com senhas do .env
+JWT_SECRET=$(openssl rand -hex 32)
+
+# Gerar ANON_KEY (role=anon, iss=supabase, exp=10 anos)
+ANON_KEY=$(node -e "
+  const header = Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    role:'anon',
+    iss:'supabase',
+    iat:Math.floor(Date.now()/1000),
+    exp:Math.floor(Date.now()/1000)+315360000
+  })).toString('base64url');
+  const crypto = require('crypto');
+  const sig = crypto.createHmac('sha256','$JWT_SECRET').update(header+'.'+payload).digest('base64url');
+  console.log(header+'.'+payload+'.'+sig);
+")
+
+# SERVICE_ROLE_KEY (role=service_role, mesma logica)
 ```
 
-Isso funciona porque o `.env` já está configurado com as senhas corretas — o problema é apenas que o banco foi criado com senhas diferentes.
+### Nginx com 3 server blocks
+
+- `$DOMAIN` -> frontend estático (`/opt/zapmanager/dist`)
+- `$API_DOMAIN` -> proxy para `localhost:3001` (Baileys API)
+- `supabase.$DOMAIN` -> proxy para `localhost:8000` (Kong/Supabase API)
+
+O frontend usara `https://supabase.$DOMAIN` como `VITE_SUPABASE_URL`.
+
+### setup-admin.ts nao-interativo
+
+Modificar para aceitar `ADMIN_EMAIL` e `ADMIN_PASSWORD` como variaveis de ambiente, eliminando o readline interativo durante a instalacao.
 
