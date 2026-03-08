@@ -48,7 +48,7 @@ instancesRouter.delete("/instances/:id", async (req: Request, res: Response) => 
 });
 
 instancesRouter.post("/instances/:id/reconnect", async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   try {
     await baileysManager.startSession(id);
