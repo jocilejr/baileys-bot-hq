@@ -92,6 +92,13 @@ cd $SUPABASE_DIR/docker
 # Generate all secrets automatically
 POSTGRES_PASSWORD=$(openssl rand -hex 16)
 JWT_SECRET=$(openssl rand -hex 32)
+SECRET_KEY_BASE=$(openssl rand -base64 48 | tr -d '\n')
+VAULT_ENC_KEY=$(openssl rand -hex 16)
+PG_META_CRYPTO_KEY=$(openssl rand -hex 16)
+LOGFLARE_PUBLIC_ACCESS_TOKEN=$(openssl rand -hex 32)
+LOGFLARE_PRIVATE_ACCESS_TOKEN=$(openssl rand -hex 32)
+S3_ACCESS_KEY_ID=$(openssl rand -hex 16)
+S3_ACCESS_KEY_SECRET=$(openssl rand -hex 32)
 DASHBOARD_USERNAME="supabase"
 DASHBOARD_PASSWORD=$(openssl rand -hex 12)
 
@@ -125,13 +132,10 @@ SERVICE_ROLE_KEY=$(node -e "
 
 echo "  ✅ Chaves geradas automaticamente"
 
-# Copy and configure .env
-cp -n .env.example .env 2>/dev/null || true
-
-# Write the .env file with all required values
+# Write the .env file with ALL required values for Supabase Docker
 cat > .env <<ENVEOF
 ############
-# Secrets
+# Secrets — auto-generated
 ############
 POSTGRES_PASSWORD=$POSTGRES_PASSWORD
 JWT_SECRET=$JWT_SECRET
@@ -139,6 +143,9 @@ ANON_KEY=$ANON_KEY
 SERVICE_ROLE_KEY=$SERVICE_ROLE_KEY
 DASHBOARD_USERNAME=$DASHBOARD_USERNAME
 DASHBOARD_PASSWORD=$DASHBOARD_PASSWORD
+SECRET_KEY_BASE=$SECRET_KEY_BASE
+VAULT_ENC_KEY=$VAULT_ENC_KEY
+PG_META_CRYPTO_KEY=$PG_META_CRYPTO_KEY
 
 ############
 # Database
@@ -148,22 +155,39 @@ POSTGRES_DB=postgres
 POSTGRES_PORT=5432
 
 ############
-# API
+# Kong API Gateway
+############
+KONG_HTTP_PORT=8000
+KONG_HTTPS_PORT=8443
+
+############
+# API / URLs
 ############
 SITE_URL=https://$DOMAIN
 API_EXTERNAL_URL=https://$SUPABASE_DOMAIN
 SUPABASE_PUBLIC_URL=https://$SUPABASE_DOMAIN
+ADDITIONAL_REDIRECT_URLS=
 
 ############
-# Auth
+# Auth (GoTrue)
 ############
-GOTRUE_SITE_URL=https://$DOMAIN
-GOTRUE_EXTERNAL_EMAIL_ENABLED=true
-GOTRUE_MAILER_AUTOCONFIRM=false
-GOTRUE_SMTP_ADMIN_EMAIL=noreply@$DOMAIN
-GOTRUE_DISABLE_SIGNUP=false
-GOTRUE_JWT_EXP=3600
-GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated
+JWT_EXPIRY=3600
+DISABLE_SIGNUP=false
+ENABLE_EMAIL_SIGNUP=true
+ENABLE_EMAIL_AUTOCONFIRM=true
+ENABLE_PHONE_SIGNUP=false
+ENABLE_PHONE_AUTOCONFIRM=false
+ENABLE_ANONYMOUS_USERS=false
+SMTP_ADMIN_EMAIL=noreply@$DOMAIN
+SMTP_HOST=supabase-mail
+SMTP_PORT=2500
+SMTP_USER=fake_mail_user
+SMTP_PASS=fake_mail_password
+SMTP_SENDER_NAME=ZapManager
+MAILER_URLPATHS_INVITE=/auth/v1/verify
+MAILER_URLPATHS_CONFIRMATION=/auth/v1/verify
+MAILER_URLPATHS_RECOVERY=/auth/v1/verify
+MAILER_URLPATHS_EMAIL_CHANGE=/auth/v1/verify
 
 ############
 # Studio
@@ -171,7 +195,11 @@ GOTRUE_JWT_DEFAULT_GROUP_NAME=authenticated
 STUDIO_DEFAULT_ORGANIZATION=ZapManager
 STUDIO_DEFAULT_PROJECT=ZapManager
 STUDIO_PORT=3000
-SUPABASE_PUBLIC_URL=https://$SUPABASE_DOMAIN
+
+############
+# PostgREST
+############
+PGRST_DB_SCHEMAS=public,storage,graphql_public
 
 ############
 # Functions
@@ -179,9 +207,35 @@ SUPABASE_PUBLIC_URL=https://$SUPABASE_DOMAIN
 FUNCTIONS_VERIFY_JWT=false
 
 ############
-# Logs — disable analytics to prevent blocking
+# Logs / Analytics
 ############
 LOGFLARE_API_KEY=fake-key-not-used
+LOGFLARE_PUBLIC_ACCESS_TOKEN=$LOGFLARE_PUBLIC_ACCESS_TOKEN
+LOGFLARE_PRIVATE_ACCESS_TOKEN=$LOGFLARE_PRIVATE_ACCESS_TOKEN
+
+############
+# Storage
+############
+STORAGE_TENANT_ID=stub
+GLOBAL_S3_BUCKET=stub
+REGION=stub
+S3_PROTOCOL_ACCESS_KEY_ID=$S3_ACCESS_KEY_ID
+S3_PROTOCOL_ACCESS_KEY_SECRET=$S3_ACCESS_KEY_SECRET
+IMGPROXY_ENABLE_WEBP_DETECTION=true
+
+############
+# Pooler (Supavisor)
+############
+POOLER_PROXY_PORT_TRANSACTION=6543
+POOLER_DEFAULT_POOL_SIZE=20
+POOLER_MAX_CLIENT_CONN=100
+POOLER_TENANT_ID=zapmanager
+POOLER_DB_POOL_SIZE=5
+
+############
+# Docker / Vector
+############
+DOCKER_SOCKET_LOCATION=/var/run/docker.sock
 ENVEOF
 
 # Fix analytics blocking issue: change service_healthy to service_started
