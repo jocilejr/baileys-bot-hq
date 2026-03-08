@@ -38,7 +38,7 @@ instancesRouter.post("/instances", async (req: Request, res: Response) => {
 });
 
 instancesRouter.delete("/instances/:id", async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   await baileysManager.stopSession(id);
 
@@ -48,7 +48,7 @@ instancesRouter.delete("/instances/:id", async (req: Request, res: Response) => 
 });
 
 instancesRouter.post("/instances/:id/reconnect", async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
 
   try {
     await baileysManager.startSession(id);
@@ -59,7 +59,7 @@ instancesRouter.post("/instances/:id/reconnect", async (req: Request, res: Respo
 });
 
 instancesRouter.get("/instances/:id/status", async (req: Request, res: Response) => {
-  const { id } = req.params;
+  const id = req.params.id as string;
   const status = baileysManager.getStatus(id);
 
   const { data } = await supabaseAdmin
