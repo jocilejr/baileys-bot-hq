@@ -46,7 +46,7 @@ async function main() {
   });
 
   if (userError) {
-    console.error("❌ Erro ao criar usuário:", userError.message);
+    console.error("❌ Erro ao criar usuário:", userError.message || JSON.stringify(userError));
     process.exit(1);
   }
 
