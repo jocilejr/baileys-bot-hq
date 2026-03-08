@@ -366,9 +366,20 @@ echo "  ✅ Backend construído"
 
 echo ""
 echo "🔐 [9/11] Criando conta de administrador..."
+echo "  ⏳ Aguardando Auth API estar 100% operacional..."
+sleep 10
 
 cd $APP_DIR/server
-ADMIN_EMAIL="$ADMIN_EMAIL" ADMIN_PASSWORD="$ADMIN_PASSWORD" npx tsx src/setup-admin.ts
+RETRIES=0
+until ADMIN_EMAIL="$ADMIN_EMAIL" ADMIN_PASSWORD="$ADMIN_PASSWORD" npx tsx src/setup-admin.ts; do
+  RETRIES=$((RETRIES+1))
+  if [ $RETRIES -ge 3 ]; then
+    echo "  ❌ Falha ao criar admin após 3 tentativas"
+    exit 1
+  fi
+  echo "  ⏳ Tentando novamente em 15s..."
+  sleep 15
+done
 
 echo "  ✅ Admin criado"
 
