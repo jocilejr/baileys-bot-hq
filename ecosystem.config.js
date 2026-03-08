@@ -3,9 +3,8 @@ module.exports = {
     {
       name: "zapmanager-api",
       cwd: "./server",
-      script: "node",
-      args: "--import tsx dist/index.js",
-      interpreter: "none",
+      script: "dist/index.js",
+      interpreter: "node",
       env: {
         NODE_ENV: "production",
       },
@@ -13,8 +12,8 @@ module.exports = {
       autorestart: true,
       watch: false,
       max_memory_restart: "500M",
-      error_file: "./logs/error.log",
-      out_file: "./logs/output.log",
+      error_file: "../logs/error.log",
+      out_file: "../logs/output.log",
       time: true,
     },
   ],
