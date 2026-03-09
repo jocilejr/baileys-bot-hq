@@ -44,7 +44,7 @@ const Chat = () => {
   };
 
   return (
-    <div className="h-full flex">
+    <div className="h-[calc(100vh-3rem)] flex">
       {/* Left - Conversation List */}
       <div className="w-80 lg:w-96 shrink-0 border-r border-border">
         <ConversationList
