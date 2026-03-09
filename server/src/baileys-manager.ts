@@ -3,10 +3,10 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
-  makeInMemoryStore,
   WASocket,
   proto,
 } from "@whiskeysockets/baileys";
+import { makeInMemoryStore } from "@whiskeysockets/baileys";
 import { Boom } from "@hapi/boom";
 import * as QRCode from "qrcode";
 import { SupabaseClient } from "@supabase/supabase-js";
