@@ -3,6 +3,7 @@ import makeWASocket, {
   DisconnectReason,
   fetchLatestBaileysVersion,
   makeCacheableSignalKeyStore,
+  makeInMemoryStore,
   WASocket,
   proto,
 } from "@whiskeysockets/baileys";
@@ -15,6 +16,7 @@ import { join } from "path";
 
 interface Session {
   socket: WASocket;
+  store: ReturnType<typeof makeInMemoryStore>;
   instanceId: string;
   retryCount: number;
 }
@@ -55,12 +57,10 @@ export class BaileysManager {
 
     if (this.sessions.has(instanceId)) {
       this.logger.info(`Session ${instanceId} already active, stopping first...`);
-      // Marcar como intencional para não disparar reconexão automática
       this.intentionalStops.add(instanceId);
       const session = this.sessions.get(instanceId)!;
       session.socket.end(undefined);
       this.sessions.delete(instanceId);
-      // Aguardar socket fechar completamente
       await new Promise(resolve => setTimeout(resolve, 500));
       this.intentionalStops.delete(instanceId);
     }
@@ -70,6 +70,9 @@ export class BaileysManager {
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
     const { version } = await fetchLatestBaileysVersion();
+
+    // In-memory store per session — required for getMessage callback (retry decryption)
+    const store = makeInMemoryStore({ logger: this.logger.child({ store: instanceId }) as any });
 
     const socket = makeWASocket({
       version,
@@ -83,14 +86,27 @@ export class BaileysManager {
       browser: ["ZapManager", "Chrome", "120.0.0"],
       qrTimeout: 60000,
       keepAliveIntervalMs: 30000,
-      syncFullHistory: true,
-      shouldSyncHistoryMessage: () => true,
+      syncFullHistory: false,
       shouldIgnoreJid: (jid: string | undefined | null) => !jid || jid === "status@broadcast" || jid.includes("@newsletter"),
       emitOwnEvents: true,
       fireInitQueries: true,
+      retryRequestDelayMs: 600,
+      maxMsgRetryCount: 3,
+      defaultQueryTimeoutMs: 60_000,
+      transactionOpts: { maxCommitRetries: 5, delayBetweenTriesMs: 1500 },
+      getMessage: async (key) => {
+        if (store) {
+          const msg = await store.loadMessage(key.remoteJid!, key.id!);
+          return msg?.message || undefined;
+        }
+        return proto.Message.fromObject({});
+      },
     });
 
-    const session: Session = { socket, instanceId, retryCount: 0 };
+    // Bind store to socket events — MUST be called before any other ev handlers
+    store.bind(socket.ev);
+
+    const session: Session = { socket, store, instanceId, retryCount: 0 };
     this.sessions.set(instanceId, session);
 
     // contacts.update — log for debugging only
@@ -103,7 +119,6 @@ export class BaileysManager {
 
       if (qr) {
         try {
-          // Store raw QR string instead of data URL - frontend will render it
           await this.supabase
             .from("instances")
             .update({ qr_code: qr, status: "qr_pending" })
@@ -116,7 +131,7 @@ export class BaileysManager {
 
       if (connection === "open") {
         session.retryCount = 0;
-        this.startingInstances.delete(instanceId); // Liberar mutex
+        this.startingInstances.delete(instanceId);
         const phone = socket.user?.id?.split(":")[0] || null;
         await this.supabase
           .from("instances")
@@ -126,9 +141,8 @@ export class BaileysManager {
       }
 
       if (connection === "close") {
-        this.startingInstances.delete(instanceId); // Liberar mutex
+        this.startingInstances.delete(instanceId);
         
-        // Se foi parada intencional, não reconectar
         if (this.intentionalStops.has(instanceId)) {
           this.logger.info(`Instance ${instanceId} closed intentionally, no reconnect`);
           this.intentionalStops.delete(instanceId);
@@ -144,7 +158,6 @@ export class BaileysManager {
             .update({ status: "disconnected", qr_code: null, phone: null })
             .eq("id", instanceId);
           this.sessions.delete(instanceId);
-          // Clean session files
           if (existsSync(sessionDir)) rmSync(sessionDir, { recursive: true });
           this.logger.info(`Instance ${instanceId} logged out`);
         } else {
@@ -153,7 +166,6 @@ export class BaileysManager {
             .update({ status: "connecting" })
             .eq("id", instanceId);
 
-          // Reconnect with exponential backoff
           session.retryCount++;
           const delay = Math.min(session.retryCount * 2000, 30000);
           this.logger.info(`Reconnecting ${instanceId} in ${delay}ms (attempt ${session.retryCount})`);
@@ -191,8 +203,6 @@ export class BaileysManager {
     const processMessage = async (msg: proto.IWebMessageInfo, isHistorySync: boolean) => {
       const remoteJid = msg.key.remoteJid;
       if (!remoteJid || remoteJid === "status@broadcast") return;
-
-      // Skip newsletters
       if (remoteJid.includes("@newsletter")) return;
 
       const chatType = getChatType(remoteJid);
@@ -204,17 +214,13 @@ export class BaileysManager {
       
       if (chatType === "private" && isLid) {
         const lidNumber = identifier;
-        
-        // 1. Try participant (most reliable for LID)
         const participant = msg.key.participant;
         if (participant && participant.includes("@s.whatsapp.net")) {
           identifier = participant.replace(/@.*$/, "");
           this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
         } else if (msg.pushName && msg.pushName !== lidNumber) {
-          // 2. Keep LID but use pushName for contact matching
           this.logger.info(`LID unresolved, using pushName "${msg.pushName}" for matching: ${lidNumber}`);
         } else {
-          // 3. Store with raw LID
           this.logger.warn(`LID unresolved, storing raw: ${lidNumber}`);
         }
       }
@@ -224,7 +230,6 @@ export class BaileysManager {
       this.logger.info(`processMessage: jid=${remoteJid}, chatType=${chatType}, fromMe=${isFromMe}`);
       const direction = isFromMe ? "outbound" : "inbound";
 
-      // For groups, use participant's pushName as sender_name
       const senderName = chatType === "group" 
         ? (msg.key.participant ? (msg.pushName || msg.key.participant.replace(/@.*$/, "")) : null)
         : (isFromMe ? null : pushName);
@@ -245,10 +250,10 @@ export class BaileysManager {
       else if (unwrapped?.documentMessage) mediaType = "document";
       else if (unwrapped?.stickerMessage) mediaType = "sticker";
 
-      // Skip protocol/system messages with no content (content may arrive later via messages.update)
+      // Skip protocol/system messages with no content
       if (!content && !mediaType) {
         const msgKeys = Object.keys(msg.message || {}).join(", ");
-        this.logger.debug(`Skipping message ${msg.key.id}: awaiting content via update. Raw keys: [${msgKeys}]`);
+        this.logger.debug(`Skipping message ${msg.key.id}: no content/media. Raw keys: [${msgKeys}]`);
         return;
       }
 
@@ -278,7 +283,6 @@ export class BaileysManager {
         }
 
         // Find or create contact
-        // First try by phone number
         let { data: contact, error: contactErr } = await this.supabase
           .from("contacts")
           .select("id")
@@ -317,7 +321,7 @@ export class BaileysManager {
 
         if (!contact) return;
 
-        // Find or create conversation (separated by chat_type)
+        // Find or create conversation
         let { data: conversation, error: convErr } = await this.supabase
           .from("conversations")
           .select("id")
@@ -346,7 +350,7 @@ export class BaileysManager {
 
         if (!conversation) return;
 
-        // Insert message with correct timestamp
+        // Insert message
         const messageData: any = {
           conversation_id: conversation.id,
           content: content || null,
@@ -361,7 +365,7 @@ export class BaileysManager {
         const { error: msgInsertErr } = await this.supabase.from("messages").insert(messageData);
         if (msgInsertErr) this.logger.error(`Supabase message insert error: ${JSON.stringify(msgInsertErr)}`);
 
-        // Update conversation preview (only for real-time messages, not history sync)
+        // Update conversation preview
         if (!isHistorySync) {
           const { error: updateErr } = await this.supabase
             .from("conversations")
@@ -385,27 +389,25 @@ export class BaileysManager {
       }
     };
 
-    // Incoming messages (real-time)
+    // Incoming messages (real-time + append)
     socket.ev.on("messages.upsert", async ({ messages, type }) => {
       this.logger.info(`>>> UPSERT EVENT for ${instanceId}: ${messages.length} msgs, type=${type}`);
-      
-      const isHistorySync = type !== "notify";
 
       for (const msg of messages) {
         const jid = msg.key.remoteJid || "";
         const rawKeys = Object.keys(msg.message || {}).join(",");
         this.logger.info(`MSG RAW: jid=${jid}, id=${msg.key.id}, fromMe=${msg.key.fromMe}, type=${type}, keys=${rawKeys}`);
-        await processMessage(msg, isHistorySync);
+        await processMessage(msg, type !== "notify");
       }
     });
 
-    // Capture decrypted content that arrives after initial empty upsert
+    // Capture decrypted content that arrives after initial empty upsert (retry decryption)
     socket.ev.on("messages.update", async (updates) => {
       for (const { key, update } of updates) {
         if (!key.remoteJid || !(update as any).message) continue;
 
         const updMsg = update as any;
-        this.logger.info(`MSG UPDATE: jid=${key.remoteJid}, id=${key.id}, hasMessage=${!!updMsg.message}, keys=${Object.keys(updMsg.message || {}).join(",")}`);
+        this.logger.info(`MSG UPDATE (retry decrypt): jid=${key.remoteJid}, id=${key.id}, keys=${Object.keys(updMsg.message || {}).join(",")}`);
 
         const fullMsg: proto.IWebMessageInfo = {
           key,
@@ -417,36 +419,11 @@ export class BaileysManager {
         await processMessage(fullMsg, false);
       }
     });
-
-    // Historical messages sync — non-blocking batch processing
-    socket.ev.on("messaging-history.set", async ({ messages, contacts, isLatest }) => {
-      if (contacts) {
-        this.logger.info(`History sync contacts for ${instanceId}: ${contacts.length} contacts`);
-      }
-
-      this.logger.info(`History sync for ${instanceId}: ${messages.length} messages (isLatest: ${isLatest})`);
-      
-      // Process in batches with setTimeout to free event loop for real-time messages
-      const BATCH_SIZE = 10;
-      const processBatch = async (startIndex: number) => {
-        const end = Math.min(startIndex + BATCH_SIZE, messages.length);
-        for (let i = startIndex; i < end; i++) {
-          await processMessage(messages[i], true);
-        }
-        if (end < messages.length) {
-          setTimeout(() => processBatch(end), 100);
-        } else {
-          this.logger.info(`History sync completed for ${instanceId}`);
-        }
-      };
-      processBatch(0); // NÃO usar await — libera event loop
-    });
   }
 
   async stopSession(instanceId: string): Promise<void> {
-    this.intentionalStops.add(instanceId); // Marcar como parada intencional
+    this.intentionalStops.add(instanceId);
     
-    // Cancelar timer de reconexão pendente, se existir
     const timer = this.reconnectTimers.get(instanceId);
     if (timer) {
       clearTimeout(timer);
