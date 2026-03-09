@@ -264,7 +264,14 @@ until docker compose exec -T db pg_isready -U postgres > /dev/null 2>&1; do
 done
 echo "  ✅ Banco de dados pronto"
 
-echo "  ✅ Senhas dos roles internos configuradas automaticamente pelo init"
+echo "  🔧 Configurando senhas dos roles internos..."
+docker compose exec -T db psql -U postgres -c "ALTER ROLE supabase_auth_admin WITH PASSWORD '${POSTGRES_PASSWORD}';"
+docker compose exec -T db psql -U postgres -c "ALTER ROLE supabase_storage_admin WITH PASSWORD '${POSTGRES_PASSWORD}';"
+echo "  ✅ Senhas configuradas"
+
+echo "  🔄 Reiniciando auth e storage..."
+docker compose restart auth storage
+sleep 5
 
 # Wait for auth service via Kong endpoint
 echo "  ⏳ Aguardando serviço de autenticação..."
