@@ -203,21 +203,41 @@ export class BaileysManager {
       
       if (chatType === "private" && isLid) {
         const lidNumber = remoteJid.replace(/@.*$/, "");
-        const lidMap = this.lidMaps.get(instanceId);
-        const resolvedPhone = lidMap?.get(lidNumber);
+        let resolved = false;
         
-        if (resolvedPhone) {
-          identifier = resolvedPhone;
-          this.logger.info(`LID resolved via map: ${lidNumber} -> ${identifier}`);
-        } else {
+        // Try native Baileys API for LID → PN resolution
+        try {
+          const pn = await (socket as any).signalRepository?.lidMapping?.getPNForLID?.(remoteJid);
+          if (pn) {
+            identifier = pn.replace(/@.*$/, "");
+            this.logger.info(`LID resolved via native API: ${lidNumber} -> ${identifier}`);
+            resolved = true;
+          }
+        } catch (e) {
+          this.logger.warn(`LID native API failed for ${lidNumber}: ${e}`);
+        }
+        
+        if (!resolved) {
           // Fallback: try participant
           const participant = msg.key.participant;
           if (participant && participant.includes("@s.whatsapp.net")) {
             identifier = participant.replace(/@.*$/, "");
             this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
           } else {
-            identifier = lidNumber;
-            this.logger.warn(`LID unresolved: ${lidNumber} (map size: ${lidMap?.size || 0}, participant: ${participant || "none"})`);
+            // Fallback: try onWhatsApp query
+            try {
+              const results = await socket.onWhatsApp(lidNumber);
+              if (results && results.length > 0 && results[0].jid) {
+                identifier = results[0].jid.replace(/@.*$/, "");
+                this.logger.info(`LID resolved via onWhatsApp: ${lidNumber} -> ${identifier}`);
+              } else {
+                identifier = lidNumber;
+                this.logger.warn(`LID unresolved (all methods failed): ${lidNumber}`);
+              }
+            } catch {
+              identifier = lidNumber;
+              this.logger.warn(`LID unresolved: ${lidNumber}`);
+            }
           }
         }
       } else {
