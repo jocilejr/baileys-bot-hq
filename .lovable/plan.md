@@ -1,43 +1,145 @@
 
 
-## Diagnóstico dos Logs
+## Plano: Instalador 100% Autônomo do ZapManager
 
-Os logs mostram dois problemas claros:
+### Objetivo
 
-1. **Primeiro restart**: `"History sync is disabled by config"` — O Baileys v6 requer configuração explícita via `shouldSyncHistoryMessage` callback para habilitar o sync. Apenas `syncFullHistory: true` não é suficiente.
+Reescrever completamente o `install.sh` para que o sistema seja **totalmente independente**. O usuário fornece apenas 5 informações:
 
-2. **Segundo restart**: `"History sync is enabled, awaiting notification with a 20s timeout"` → `"Timeout in AwaitingInitialSync"` — O sync habilitou mas expirou porque **a sessão já existia** (não é primeira conexão). O histórico completo só é enviado pelo WhatsApp na **primeira conexão** (QR scan). Em reconexões, ele envia apenas mensagens offline pendentes.
+1. Dominio do frontend
+2. Dominio da API
+3. Email para SSL
+4. Email do admin
+5. Senha do admin
 
-3. **Mensagens em tempo real não aparecem**: Os logs mostram apenas erros de decriptação de mensagens de **grupo** (`@g.us`), mas nenhum log de processamento de mensagens privadas. Isso sugere que mensagens privadas novas **não estão chegando** ou estão sendo processadas sem log.
+Tudo mais (Supabase self-hosted, chaves, banco, migrations, Baileys) e configurado automaticamente.
 
-## Plano de Correções
+### Arquivos a criar/modificar
 
-### Arquivo: `server/src/baileys-manager.ts`
+| Arquivo | Acao |
+|---|---|
+| `install.sh` | Reescrever completo |
+| `migrations/init.sql` | Criar com todas as tabelas, enums, RLS, triggers, funcoes |
+| `ecosystem.config.js` | Corrigir script path para producao |
+| `server/src/setup-admin.ts` | Adaptar para receber args via env (sem interativo) |
+| `.env.production.template` | Template para o frontend com variaveis do Supabase local |
 
-**1. Adicionar `shouldSyncHistoryMessage` ao `makeWASocket`** para aceitar notificações de histórico:
-```typescript
-shouldSyncHistoryMessage: () => true,
+### Fluxo do instalador
+
+```text
+Entrada do usuario:
+  DOMAIN, API_DOMAIN, SSL_EMAIL, ADMIN_EMAIL, ADMIN_PASSWORD
+
+1. Instalar dependencias (Node 20, PM2, Nginx, Docker, Certbot)
+2. Clonar repositorio
+3. Instalar Supabase Docker self-hosted
+   a. git clone supabase/supabase -> /opt/supabase
+   b. Gerar senhas automaticas (POSTGRES_PASSWORD, JWT_SECRET, ANON_KEY, SERVICE_ROLE_KEY)
+   c. Configurar .env ANTES do primeiro boot
+   d. Desabilitar analytics (causa bloqueio)
+   e. docker compose up -d
+   f. Aguardar health checks (db, auth, rest)
+4. Executar migrations (init.sql) via docker exec com usuario postgres em modo trust temporario
+5. Configurar frontend (.env.production apontando para Supabase local)
+6. Build frontend
+7. Configurar backend (server/.env com keys locais)
+8. Build e instalar backend
+9. Criar admin automaticamente (sem interacao)
+10. Nginx (frontend + API + Supabase dashboard)
+11. SSL via Certbot
+12. PM2 start
 ```
 
-**2. Adicionar logs de debug** no `messages.upsert` e `messaging-history.set` para diagnosticar se mensagens chegam:
-```typescript
-// No messages.upsert:
-this.logger.info(`messages.upsert: ${messages.length} msgs, type: ${type}`);
+### Correcoes de bugs conhecidos
 
-// No messaging-history.set (já tem log)
-```
+**1. Senha do PostgreSQL / roles internas**
 
-**3. Processar também `type !== "notify"`** no `messages.upsert` — mensagens offline pendentes chegam com tipo diferente de `notify`. Mudar o filtro para processar todos os tipos, marcando como histórico quando não é `notify`.
+O Supabase Docker inicializa roles (`supabase_admin`, `supabase_auth_admin`) com a senha do `POSTGRES_PASSWORD` no primeiro boot. Se o volume ja existir com senha diferente, falha. Solucao:
 
-**4. Para forçar sync histórico completo**: O usuário precisará **deletar a sessão** e reconectar via QR:
+- Sempre `docker compose down -v` antes do primeiro `up`
+- Gerar `POSTGRES_PASSWORD` automaticamente e injetar no `.env` ANTES do boot
+- Usar `pg_isready` para confirmar que o banco aceitou conexoes antes de rodar migrations
+
+**2. Analytics bloqueando servicos**
+
+O container `supabase-analytics` (Logflare) frequentemente falha e bloqueia kong/auth/rest por causa do `depends_on: condition: service_healthy`. Solucao:
+
+- Usar `sed` para trocar `service_healthy` por `service_started` no docker-compose.yml do Supabase
+- Opcionalmente desabilitar analytics completamente (nao e critico)
+
+**3. Geracao automatica de JWT keys**
+
+O Supabase precisa de `JWT_SECRET`, `ANON_KEY` e `SERVICE_ROLE_KEY`. Estas sao derivadas do JWT_SECRET usando payloads especificos. O instalador vai:
+
+- Gerar um `JWT_SECRET` aleatorio
+- Usar `node` inline para gerar `ANON_KEY` e `SERVICE_ROLE_KEY` com os payloads corretos do Supabase (`role: anon` e `role: service_role`)
+
+**4. Migration SQL robusta**
+
+Criar `migrations/init.sql` com:
+
+- `DO $$ ... IF NOT EXISTS` para todos os enums
+- `CREATE TABLE IF NOT EXISTS` para todas as tabelas
+- `DROP POLICY IF EXISTS` + `CREATE POLICY` para RLS
+- `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` para triggers
+- Funcoes com `CREATE OR REPLACE`
+- Nao criar trigger em `auth.users` diretamente (usar funcao do Supabase `handle_new_user` via API)
+
+**5. PM2 ecosystem corrigido**
+
+O `ecosystem.config.js` atual usa `--import tsx dist/index.js` que nao funciona em producao sem tsx instalado. Corrigir para usar o JS compilado diretamente ou garantir tsx como dependencia.
+
+### Detalhes tecnicos do init.sql
+
+Tabelas a criar (baseado no schema atual do Lovable Cloud):
+
+- `user_roles` (com enum `app_role`: admin, moderator, user, supervisor)
+- `profiles`
+- `instances` (com enum `instance_status`)
+- `contacts`
+- `conversations` (com enum `conversation_status`)
+- `messages` (com enum `message_status`, `message_direction`)
+- `campaigns` (com enum `campaign_status`)
+- `campaign_messages`
+- `automation_flows` (com enum `trigger_type`)
+- `quick_replies`
+- `settings`
+
+Funcoes: `update_updated_at_column`, `has_role`, `handle_new_user`
+Triggers: `updated_at` em todas as tabelas relevantes, `on_auth_user_created` em `auth.users`
+Storage bucket: `automation-media` (public)
+
+### Detalhes tecnicos da geracao de keys
+
 ```bash
-rm -rf /root/baileys-bot-hq/server/sessions/25deaef7-bc2e-4d4a-8985-3e1094c25a16
-pm2 restart zapmanager-api
-```
-Depois escanear o QR novamente na interface.
+JWT_SECRET=$(openssl rand -hex 32)
 
-### Resumo das alterações no código:
-- Linha ~74: Adicionar `shouldSyncHistoryMessage: () => true` nas opções do socket
-- Linha ~304: Remover `if (type !== "notify") return` e adicionar log de debug
-- Adicionar logs em pontos estratégicos para rastrear o fluxo de mensagens
+# Gerar ANON_KEY (role=anon, iss=supabase, exp=10 anos)
+ANON_KEY=$(node -e "
+  const header = Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    role:'anon',
+    iss:'supabase',
+    iat:Math.floor(Date.now()/1000),
+    exp:Math.floor(Date.now()/1000)+315360000
+  })).toString('base64url');
+  const crypto = require('crypto');
+  const sig = crypto.createHmac('sha256','$JWT_SECRET').update(header+'.'+payload).digest('base64url');
+  console.log(header+'.'+payload+'.'+sig);
+")
+
+# SERVICE_ROLE_KEY (role=service_role, mesma logica)
+```
+
+### Nginx com 3 server blocks
+
+- `$DOMAIN` -> frontend estático (`/opt/zapmanager/dist`)
+- `$API_DOMAIN` -> proxy para `localhost:3001` (Baileys API)
+- `supabase.$DOMAIN` -> proxy para `localhost:8000` (Kong/Supabase API)
+
+O frontend usara `https://supabase.$DOMAIN` como `VITE_SUPABASE_URL`.
+
+### setup-admin.ts nao-interativo
+
+Modificar para aceitar `ADMIN_EMAIL` e `ADMIN_PASSWORD` como variaveis de ambiente, eliminando o readline interativo durante a instalacao.
 
