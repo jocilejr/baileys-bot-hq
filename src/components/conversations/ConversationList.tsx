@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, RefreshCw, Search, MessageSquare, Trash2 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, RefreshCw, Search, MessageSquare, Trash2, Users } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,

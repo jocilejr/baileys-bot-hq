@@ -162,9 +162,9 @@ export class BaileysManager {
     // Save credentials
     socket.ev.on("creds.update", saveCreds);
 
-    // Helper: check if JID is a private chat (not group, newsletter, or lid)
-    const isPrivateChat = (jid: string): boolean => {
-      return jid.endsWith("@s.whatsapp.net") && !jid.includes("@g.us") && !jid.includes("@newsletter") && !jid.includes("@lid");
+    // Helper: determine chat type from JID
+    const getChatType = (jid: string): "private" | "group" => {
+      return jid.includes("@g.us") ? "group" : "private";
     };
 
     // Helper: process and save a single message
@@ -172,12 +172,15 @@ export class BaileysManager {
       const remoteJid = msg.key.remoteJid;
       if (!remoteJid || remoteJid === "status@broadcast") return;
 
-      // Only process private chats
-      if (!isPrivateChat(remoteJid)) return;
+      // Skip newsletters
+      if (remoteJid.includes("@newsletter")) return;
 
+      const chatType = getChatType(remoteJid);
       const isFromMe = msg.key.fromMe === true;
-      const phone = remoteJid.replace("@s.whatsapp.net", "");
-      const pushName = msg.pushName || phone;
+      const identifier = remoteJid.replace(/@.*$/, "");
+      const pushName = msg.pushName || identifier;
+
+      this.logger.info(`processMessage: jid=${remoteJid}, chatType=${chatType}, fromMe=${isFromMe}`);
       const direction = isFromMe ? "outbound" : "inbound";
 
       const content = msg.message?.conversation
