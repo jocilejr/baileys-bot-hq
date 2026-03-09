@@ -80,6 +80,8 @@ export class BaileysManager {
       printQRInTerminal: false,
       logger: this.logger.child({ instance: instanceId }) as any,
       generateHighQualityLinkPreview: true,
+      browser: ["ZapManager", "Chrome", "120.0.0"],
+      qrTimeout: 60000,
     });
 
     const session: Session = { socket, instanceId, retryCount: 0 };
@@ -90,12 +92,16 @@ export class BaileysManager {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        const qrDataUrl = await QRCode.toDataURL(qr, { width: 400, margin: 2, errorCorrectionLevel: 'M' });
-        await this.supabase
-          .from("instances")
-          .update({ qr_code: qrDataUrl, status: "qr_pending" })
-          .eq("id", instanceId);
-        this.logger.info(`QR generated for ${instanceId} (size: ${qrDataUrl.length} bytes)`);
+        try {
+          // Store raw QR string instead of data URL - frontend will render it
+          await this.supabase
+            .from("instances")
+            .update({ qr_code: qr, status: "qr_pending" })
+            .eq("id", instanceId);
+          this.logger.info(`QR raw string saved for ${instanceId} (length: ${qr.length})`);
+        } catch (qrErr) {
+          this.logger.error(`Failed to save QR for ${instanceId}: ${qrErr}`);
+        }
       }
 
       if (connection === "open") {

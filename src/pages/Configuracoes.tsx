@@ -12,6 +12,7 @@ import { useSettings, useUpdateSetting } from "@/hooks/useSettings";
 import { useInstances, useCreateInstance, useDeleteInstance, useReconnectInstance, useBackendHealth, useRealtimeInstances } from "@/hooks/useInstances";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QRCodeDisplay } from "@/components/instances/QRCodeDisplay";
 
 const Configuracoes = () => {
   const { data: settings, isLoading } = useSettings();
@@ -117,63 +118,15 @@ const Configuracoes = () => {
 
   const isConnecting = (status: string) => status === "qr_pending" || status === "connecting";
 
-  // QR dialog content: 3 states
   const renderQrContent = () => {
-    if (!qrInstance) return (
-      <div className="flex flex-col items-center gap-3 py-10">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Iniciando conexão...</p>
-      </div>
-    );
-
-    if (qrInstance.status === "connected") return (
-      <div className="flex flex-col items-center gap-4 py-10">
-        <CheckCircle2 className="h-16 w-16 text-success" />
-        <p className="text-lg font-semibold text-foreground">Conectado!</p>
-        <p className="text-sm text-muted-foreground">{qrInstance.phone || "WhatsApp vinculado com sucesso"}</p>
-      </div>
-    );
-
-    if (qrInstance.qr_code) return (
-      <div className="flex flex-col items-center gap-4">
-        <div className="relative">
-          <img src={qrInstance.qr_code} alt="QR Code" className="w-64 h-64 rounded-xl border border-border" />
-          <Badge variant="secondary" className="absolute -top-2 -right-2 text-xs">
-            Pronto
-          </Badge>
-        </div>
-        <div className="text-center space-y-1">
-          <p className="text-sm font-medium text-foreground">Escaneie com o WhatsApp</p>
-          <p className="text-xs text-muted-foreground">
-            Abra o WhatsApp → Menu → Aparelhos conectados → Conectar aparelho
-          </p>
-          <p className="text-xs text-muted-foreground opacity-60">O QR atualiza automaticamente a cada ~20s</p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => reconnectInstance.mutate(qrInstance.id)}
-          disabled={reconnectInstance.isPending}
-          className="w-full"
-        >
-          {reconnectInstance.isPending
-            ? <><Loader2 className="h-3 w-3 animate-spin mr-2" />Atualizando QR...</>
-            : <><RefreshCw className="h-3 w-3 mr-2" />Gerar novo QR</>}
-        </Button>
-      </div>
-    );
-
-    // Generating state (no QR yet)
     return (
-      <div className="flex flex-col items-center gap-4 py-6">
-        <div className="relative w-64 h-64 rounded-xl border-2 border-dashed border-border flex items-center justify-center bg-secondary/20">
-          <div className="flex flex-col items-center gap-3">
-            <Loader2 className="h-10 w-10 animate-spin text-primary" />
-            <p className="text-sm font-medium text-foreground">Gerando QR Code...</p>
-            <p className="text-xs text-muted-foreground text-center px-4">Aguarde enquanto conectamos ao WhatsApp</p>
-          </div>
-        </div>
-      </div>
+      <QRCodeDisplay
+        status={qrInstance?.status || "connecting"}
+        qrCode={qrInstance?.qr_code || null}
+        phone={qrInstance?.phone || null}
+        onRegenerate={() => qrInstance && reconnectInstance.mutate(qrInstance.id)}
+        isRegenerating={reconnectInstance.isPending}
+      />
     );
   };
 
