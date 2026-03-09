@@ -91,6 +91,18 @@ export function ConversationList({
             </Button>
           )}
         </div>
+        <Tabs value={chatType} onValueChange={onChatTypeChange}>
+          <TabsList className="w-full">
+            <TabsTrigger value="private" className="flex-1 gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Conversas
+            </TabsTrigger>
+            <TabsTrigger value="group" className="flex-1 gap-1.5">
+              <Users className="h-3.5 w-3.5" />
+              Grupos
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
