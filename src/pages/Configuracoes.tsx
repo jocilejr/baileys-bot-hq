@@ -12,6 +12,7 @@ import { useSettings, useUpdateSetting } from "@/hooks/useSettings";
 import { useInstances, useCreateInstance, useDeleteInstance, useReconnectInstance, useBackendHealth, useRealtimeInstances } from "@/hooks/useInstances";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
+import { QRCodeDisplay } from "@/components/instances/QRCodeDisplay";
 
 const Configuracoes = () => {
   const { data: settings, isLoading } = useSettings();
