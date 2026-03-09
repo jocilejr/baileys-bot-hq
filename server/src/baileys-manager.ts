@@ -290,10 +290,8 @@ export class BaileysManager {
           sender_name: senderName,
           external_id: externalId,
           media_type: mediaType,
+          created_at: createdAt || new Date().toISOString(),
         };
-        if (createdAt) {
-          messageData.created_at = createdAt;
-        }
 
         const { error: msgInsertErr } = await this.supabase.from("messages").insert(messageData);
         if (msgInsertErr) this.logger.error(`Supabase message insert error: ${JSON.stringify(msgInsertErr)}`);
