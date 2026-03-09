@@ -59,6 +59,8 @@ export function ConversationList({
   onDelete,
   onSync,
   isSyncing,
+  chatType,
+  onChatTypeChange,
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
 
