@@ -78,7 +78,7 @@ export function useMessages(conversationId: string | null) {
       if (error) throw error;
       return data;
     },
-    refetchInterval: realtimeFailed.current ? 5000 : false,
+    refetchInterval: 5000,
   });
 
   useEffect(() => {
