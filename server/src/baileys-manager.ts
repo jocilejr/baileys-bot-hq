@@ -82,6 +82,7 @@ export class BaileysManager {
       generateHighQualityLinkPreview: true,
       browser: ["ZapManager", "Chrome", "120.0.0"],
       qrTimeout: 60000,
+      syncFullHistory: true,
     });
 
     const session: Session = { socket, instanceId, retryCount: 0 };
