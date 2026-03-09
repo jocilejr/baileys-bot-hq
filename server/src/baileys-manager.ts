@@ -97,20 +97,7 @@ export class BaileysManager {
     const lidMap = this.lidMaps.get(instanceId)!;
 
     // Listen for contacts to build LID → Phone mapping
-    socket.ev.on("contacts.set", ({ contacts: waContacts }) => {
-      let mapped = 0;
-      for (const c of waContacts) {
-        const cId = (c as any).id;
-        const cLid = (c as any).lid;
-        if (cId && cLid) {
-          const phone = cId.replace(/@.*$/, "");
-          const lid = cLid.replace(/@.*$/, "");
-          lidMap.set(lid, phone);
-          mapped++;
-        }
-      }
-      this.logger.info(`contacts.set for ${instanceId}: ${waContacts.length} contacts, ${mapped} LID mappings`);
-    });
+    // contacts.set does not exist in Baileys v6 — LID mapping is done in messaging-history.set
 
     socket.ev.on("contacts.update", (updates) => {
       for (const c of updates) {
