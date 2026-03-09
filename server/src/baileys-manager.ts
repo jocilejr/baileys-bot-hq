@@ -6,7 +6,7 @@ import makeWASocket, {
   WASocket,
   proto,
 } from "@whiskeysockets/baileys";
-import { makeInMemoryStore } from "@whiskeysockets/baileys";
+import makeInMemoryStore from "@whiskeysockets/baileys/lib/Store/make-in-memory-store";
 import { Boom } from "@hapi/boom";
 import * as QRCode from "qrcode";
 import { SupabaseClient } from "@supabase/supabase-js";
