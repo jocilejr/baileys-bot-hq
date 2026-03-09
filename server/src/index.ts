@@ -28,7 +28,7 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 export const baileysManager = new BaileysManager(supabaseAdmin, logger);
 
 // Middleware
-app.use(cors({ origin: process.env.CORS_ORIGIN || "*", credentials: true }));
+app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") || "*", credentials: true }));
 app.use(express.json({ limit: "50mb" }));
 
 // Auth middleware — validates Supabase JWT
