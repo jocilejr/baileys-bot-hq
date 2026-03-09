@@ -36,9 +36,33 @@ export class BaileysManager {
   }
 
   async startSession(instanceId: string): Promise<void> {
+    // Mutex: evitar chamadas concorrentes para a mesma instância
+    if (this.startingInstances.has(instanceId)) {
+      this.logger.info(`Session ${instanceId} already starting, ignoring duplicate call`);
+      return;
+    }
+    this.startingInstances.add(instanceId);
+
+    // Cancelar qualquer timer de reconexão pendente
+    const existingTimer = this.reconnectTimers.get(instanceId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.reconnectTimers.delete(instanceId);
+    }
+
+    // Limpar flag de parada intencional
+    this.intentionalStops.delete(instanceId);
+
     if (this.sessions.has(instanceId)) {
       this.logger.info(`Session ${instanceId} already active, stopping first...`);
-      await this.stopSession(instanceId);
+      // Marcar como intencional para não disparar reconexão automática
+      this.intentionalStops.add(instanceId);
+      const session = this.sessions.get(instanceId)!;
+      session.socket.end(undefined);
+      this.sessions.delete(instanceId);
+      // Aguardar socket fechar completamente
+      await new Promise(resolve => setTimeout(resolve, 500));
+      this.intentionalStops.delete(instanceId);
     }
 
     const sessionDir = join(SESSIONS_DIR, instanceId);
