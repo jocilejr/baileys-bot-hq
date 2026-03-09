@@ -303,10 +303,14 @@ export class BaileysManager {
 
     // Incoming messages (real-time)
     socket.ev.on("messages.upsert", async ({ messages, type }) => {
-      if (type !== "notify") return;
+      this.logger.info(`messages.upsert for ${instanceId}: ${messages.length} msgs, type: ${type}`);
+      
+      const isHistorySync = type !== "notify";
 
       for (const msg of messages) {
-        await processMessage(msg, false);
+        const jid = msg.key.remoteJid || "";
+        this.logger.info(`Processing msg ${msg.key.id} from ${jid} (fromMe: ${msg.key.fromMe}, type: ${type})`);
+        await processMessage(msg, isHistorySync);
       }
     });
 
