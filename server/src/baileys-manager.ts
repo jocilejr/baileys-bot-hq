@@ -187,6 +187,8 @@ export class BaileysManager {
       const senderName = chatType === "group" 
         ? (msg.key.participant ? (msg.pushName || msg.key.participant.replace(/@.*$/, "")) : null)
         : (isFromMe ? null : pushName);
+
+      const content = msg.message?.conversation
         || msg.message?.extendedTextMessage?.text
         || msg.message?.imageMessage?.caption
         || msg.message?.videoMessage?.caption
