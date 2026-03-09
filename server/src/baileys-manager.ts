@@ -177,7 +177,26 @@ export class BaileysManager {
 
       const chatType = getChatType(remoteJid);
       const isFromMe = msg.key.fromMe === true;
-      const identifier = remoteJid.replace(/@.*$/, "");
+      
+      // Resolve LID (@lid) to real phone number
+      let identifier: string;
+      const isLid = remoteJid.includes("@lid");
+      
+      if (chatType === "private" && isLid) {
+        // Try to get real number from participant or other sources
+        const participant = msg.key.participant;
+        if (participant && participant.includes("@s.whatsapp.net")) {
+          identifier = participant.replace(/@.*$/, "");
+          this.logger.info(`LID resolved via participant: ${remoteJid} -> ${identifier}`);
+        } else {
+          // Fallback: use the LID number but log warning
+          identifier = remoteJid.replace(/@.*$/, "");
+          this.logger.warn(`LID JID could not be resolved: ${remoteJid}, participant: ${participant || "none"}`);
+        }
+      } else {
+        identifier = remoteJid.replace(/@.*$/, "");
+      }
+      
       const pushName = msg.pushName || identifier;
 
       this.logger.info(`processMessage: jid=${remoteJid}, chatType=${chatType}, fromMe=${isFromMe}`);
@@ -230,6 +249,7 @@ export class BaileysManager {
         }
 
         // Find or create contact
+        // First try by phone number
         let { data: contact, error: contactErr } = await this.supabase
           .from("contacts")
           .select("id")
@@ -238,6 +258,22 @@ export class BaileysManager {
           .single();
         if (contactErr && contactErr.code !== "PGRST116") {
           this.logger.error(`Supabase contact select error: ${JSON.stringify(contactErr)}`);
+        }
+
+        // If not found and identifier looks like a LID, try finding by pushName
+        if (!contact && isLid && pushName && pushName !== identifier) {
+          const { data: nameContact, error: nameErr } = await this.supabase
+            .from("contacts")
+            .select("id")
+            .eq("name", pushName)
+            .eq("instance_id", instanceId)
+            .limit(1)
+            .maybeSingle();
+          if (nameErr) this.logger.error(`Supabase contact name lookup error: ${JSON.stringify(nameErr)}`);
+          if (nameContact) {
+            contact = nameContact;
+            this.logger.info(`LID contact matched by name: "${pushName}" -> ${nameContact.id}`);
+          }
         }
 
         if (!contact) {
