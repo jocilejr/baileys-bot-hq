@@ -245,10 +245,10 @@ export class BaileysManager {
       else if (unwrapped?.documentMessage) mediaType = "document";
       else if (unwrapped?.stickerMessage) mediaType = "sticker";
 
-      // Skip protocol/system messages with no content
+      // Skip protocol/system messages with no content (content may arrive later via messages.update)
       if (!content && !mediaType) {
         const msgKeys = Object.keys(msg.message || {}).join(", ");
-        this.logger.warn(`Discarding message ${msg.key.id}: no content/media. Raw keys: [${msgKeys}]`);
+        this.logger.debug(`Skipping message ${msg.key.id}: awaiting content via update. Raw keys: [${msgKeys}]`);
         return;
       }
 
