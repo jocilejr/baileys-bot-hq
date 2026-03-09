@@ -1,0 +1,1 @@
+ALTER TABLE public.conversations ADD COLUMN IF NOT EXISTS chat_type text NOT NULL DEFAULT 'private';
