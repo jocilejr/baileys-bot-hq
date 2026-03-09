@@ -39,6 +39,8 @@ interface ConversationListProps {
   onDelete: (conv: ConversationItem) => void;
   onSync?: () => void;
   isSyncing?: boolean;
+  chatType: string;
+  onChatTypeChange: (type: string) => void;
 }
 
 function formatTime(dateStr: string | null) {
