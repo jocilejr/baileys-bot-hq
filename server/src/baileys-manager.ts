@@ -399,23 +399,28 @@ export class BaileysManager {
       }
     });
 
-    // Historical messages sync
+    // Historical messages sync — non-blocking batch processing
     socket.ev.on("messaging-history.set", async ({ messages, contacts, isLatest }) => {
       if (contacts) {
-        // Log first 3 contacts raw data for debugging
-        for (let i = 0; i < Math.min(3, contacts.length); i++) {
-          this.logger.info(`Contact sample ${i}: ${JSON.stringify(contacts[i])}`);
-        }
         this.logger.info(`History sync contacts for ${instanceId}: ${contacts.length} contacts`);
       }
 
       this.logger.info(`History sync for ${instanceId}: ${messages.length} messages (isLatest: ${isLatest})`);
       
-      for (const msg of messages) {
-        await processMessage(msg, true);
-      }
-      
-      this.logger.info(`History sync completed for ${instanceId}`);
+      // Process in batches with setTimeout to free event loop for real-time messages
+      const BATCH_SIZE = 10;
+      const processBatch = async (startIndex: number) => {
+        const end = Math.min(startIndex + BATCH_SIZE, messages.length);
+        for (let i = startIndex; i < end; i++) {
+          await processMessage(messages[i], true);
+        }
+        if (end < messages.length) {
+          setTimeout(() => processBatch(end), 100);
+        } else {
+          this.logger.info(`History sync completed for ${instanceId}`);
+        }
+      };
+      processBatch(0); // NÃO usar await — libera event loop
     });
   }
 
