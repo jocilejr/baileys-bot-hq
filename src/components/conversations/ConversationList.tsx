@@ -133,6 +133,7 @@ export function ConversationList({
               const isSelected = selected?.id === conv.id;
               const hasUnread = (conv.unread_count ?? 0) > 0;
               const contactName = conv.contacts?.name || "Desconhecido";
+              const isGroup = conv.chat_type === "group";
 
               return (
                 <div key={conv.id}>
