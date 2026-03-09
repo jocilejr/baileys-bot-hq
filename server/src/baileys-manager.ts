@@ -418,31 +418,20 @@ export class BaileysManager {
 
       for (const msg of messages) {
         const jid = msg.key.remoteJid || "";
-        this.logger.info(`Processing msg ${msg.key.id} from ${jid} (fromMe: ${msg.key.fromMe}, type: ${type})`);
+        const rawKeys = Object.keys(msg.message || {}).join(",");
+        this.logger.info(`MSG RAW: jid=${jid}, id=${msg.key.id}, fromMe=${msg.key.fromMe}, type=${type}, keys=${rawKeys}`);
         await processMessage(msg, isHistorySync);
       }
     });
 
     // Historical messages sync
     socket.ev.on("messaging-history.set", async ({ messages, contacts, isLatest }) => {
-      // Build LID map from contacts delivered in history sync
       if (contacts) {
-        // Log first 3 contacts raw data for LID debugging
+        // Log first 3 contacts raw data for debugging
         for (let i = 0; i < Math.min(3, contacts.length); i++) {
           this.logger.info(`Contact sample ${i}: ${JSON.stringify(contacts[i])}`);
         }
-        let mapped = 0;
-        for (const c of contacts) {
-          const cId = (c as any).id;
-          const cLid = (c as any).lid;
-          if (cId && cLid) {
-            const phone = cId.replace(/@.*$/, "");
-            const lid = cLid.replace(/@.*$/, "");
-            lidMap.set(lid, phone);
-            mapped++;
-          }
-        }
-        this.logger.info(`History sync LID mapping for ${instanceId}: ${contacts.length} contacts, ${mapped} mapped (total map: ${lidMap.size})`);
+        this.logger.info(`History sync contacts for ${instanceId}: ${contacts.length} contacts`);
       }
 
       this.logger.info(`History sync for ${instanceId}: ${messages.length} messages (isLatest: ${isLatest})`);
