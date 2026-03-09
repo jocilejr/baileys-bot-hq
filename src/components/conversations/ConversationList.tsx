@@ -24,6 +24,7 @@ export interface ConversationItem {
   last_message_preview: string | null;
   unread_count: number | null;
   department: string | null;
+  chat_type: string;
   created_at: string;
   updated_at: string;
   contacts?: { name: string; phone: string; tags: string[] | null } | null;
