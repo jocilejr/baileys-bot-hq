@@ -1,76 +1,145 @@
 
 
-## Plano: Reestruturar Baileys como transporte puro
+## Plano: Instalador 100% Autônomo do ZapManager
 
-### Conceito
+### Objetivo
 
-O Baileys passa a ser **apenas um gateway** — recebe e envia mensagens via WhatsApp. Toda a lógica de persistência (contatos, conversas, mensagens) fica na rota da API Express (`messages.ts`). O `baileys-manager.ts` emite eventos quando mensagens chegam, e a rota salva no banco.
+Reescrever completamente o `install.sh` para que o sistema seja **totalmente independente**. O usuário fornece apenas 5 informações:
 
-### Arquitetura nova
+1. Dominio do frontend
+2. Dominio da API
+3. Email para SSL
+4. Email do admin
+5. Senha do admin
+
+Tudo mais (Supabase self-hosted, chaves, banco, migrations, Baileys) e configurado automaticamente.
+
+### Arquivos a criar/modificar
+
+| Arquivo | Acao |
+|---|---|
+| `install.sh` | Reescrever completo |
+| `migrations/init.sql` | Criar com todas as tabelas, enums, RLS, triggers, funcoes |
+| `ecosystem.config.js` | Corrigir script path para producao |
+| `server/src/setup-admin.ts` | Adaptar para receber args via env (sem interativo) |
+| `.env.production.template` | Template para o frontend com variaveis do Supabase local |
+
+### Fluxo do instalador
 
 ```text
-WhatsApp ←→ Baileys (transporte) ←→ Express API (persistência) ←→ Supabase DB ←→ Frontend
+Entrada do usuario:
+  DOMAIN, API_DOMAIN, SSL_EMAIL, ADMIN_EMAIL, ADMIN_PASSWORD
+
+1. Instalar dependencias (Node 20, PM2, Nginx, Docker, Certbot)
+2. Clonar repositorio
+3. Instalar Supabase Docker self-hosted
+   a. git clone supabase/supabase -> /opt/supabase
+   b. Gerar senhas automaticas (POSTGRES_PASSWORD, JWT_SECRET, ANON_KEY, SERVICE_ROLE_KEY)
+   c. Configurar .env ANTES do primeiro boot
+   d. Desabilitar analytics (causa bloqueio)
+   e. docker compose up -d
+   f. Aguardar health checks (db, auth, rest)
+4. Executar migrations (init.sql) via docker exec com usuario postgres em modo trust temporario
+5. Configurar frontend (.env.production apontando para Supabase local)
+6. Build frontend
+7. Configurar backend (server/.env com keys locais)
+8. Build e instalar backend
+9. Criar admin automaticamente (sem interacao)
+10. Nginx (frontend + API + Supabase dashboard)
+11. SSL via Certbot
+12. PM2 start
 ```
 
-### Mudanças
+### Correcoes de bugs conhecidos
 
-**1. `server/src/baileys-manager.ts` — simplificar radicalmente**
+**1. Senha do PostgreSQL / roles internas**
 
-- Remover import do `makeInMemoryStore` (resolve o erro de build)
-- Remover toda a função `processMessage` (~200 linhas) — Baileys não salva mais nada
-- Remover helpers `getChatType`, `unwrapMessage` do manager
-- Adicionar um sistema de **event emitter** (Node.js `EventEmitter`) para emitir eventos `message.received` com os dados brutos parseados
-- O `messages.upsert` e `messages.update` apenas extraem o conteúdo e emitem o evento
-- Manter: connection management, QR code, reconnect, sendMessage, creds
-- `getMessage` callback retorna `proto.Message.fromObject({})` (fallback simples, sem store)
-- Session interface fica apenas `{ socket, instanceId, retryCount }` — sem store
+O Supabase Docker inicializa roles (`supabase_admin`, `supabase_auth_admin`) com a senha do `POSTGRES_PASSWORD` no primeiro boot. Se o volume ja existir com senha diferente, falha. Solucao:
 
-**2. `server/src/index.ts` — registrar listener de eventos**
+- Sempre `docker compose down -v` antes do primeiro `up`
+- Gerar `POSTGRES_PASSWORD` automaticamente e injetar no `.env` ANTES do boot
+- Usar `pg_isready` para confirmar que o banco aceitou conexoes antes de rodar migrations
 
-- Importar o EventEmitter do manager
-- Registrar um listener `message.received` que chama a lógica de persistência
-- A lógica de persistência (find/create contact, find/create conversation, insert message, update preview) vai para um novo arquivo ou diretamente no index
+**2. Analytics bloqueando servicos**
 
-**3. `server/src/message-handler.ts` — novo arquivo**
+O container `supabase-analytics` (Logflare) frequentemente falha e bloqueia kong/auth/rest por causa do `depends_on: condition: service_healthy`. Solucao:
 
-- Contém toda a lógica de persistência extraída do `processMessage`:
-  - `unwrapMessage` helper
-  - `getChatType` helper
-  - Resolução de LID
-  - Find/create contact
-  - Find/create conversation
-  - Insert message (com dedup por external_id)
-  - Update conversation preview
-- Exporta uma função `handleIncomingMessage(supabase, data)` que recebe os dados já parseados
+- Usar `sed` para trocar `service_healthy` por `service_started` no docker-compose.yml do Supabase
+- Opcionalmente desabilitar analytics completamente (nao e critico)
 
-**4. `server/src/routes/messages.ts` — sem mudanças significativas**
+**3. Geracao automatica de JWT keys**
 
-- A rota POST `/messages/send` continua igual (Baileys envia, rota salva no DB)
+O Supabase precisa de `JWT_SECRET`, `ANON_KEY` e `SERVICE_ROLE_KEY`. Estas sao derivadas do JWT_SECRET usando payloads especificos. O instalador vai:
 
-### Estrutura final do `baileys-manager.ts`
+- Gerar um `JWT_SECRET` aleatorio
+- Usar `node` inline para gerar `ANON_KEY` e `SERVICE_ROLE_KEY` com os payloads corretos do Supabase (`role: anon` e `role: service_role`)
 
-```typescript
-import { EventEmitter } from "events";
+**4. Migration SQL robusta**
 
-export class BaileysManager extends EventEmitter {
-  // emit("message.received", { instanceId, remoteJid, fromMe, content, mediaType, senderName, externalId, timestamp, pushName })
-  
-  // startSession: connection, QR, reconnect, creds
-  // messages.upsert → parse → this.emit("message.received", parsed)
-  // messages.update → parse → this.emit("message.received", parsed)
-  // sendMessage: sem mudanças
-  // stopSession: sem mudanças
-}
+Criar `migrations/init.sql` com:
+
+- `DO $$ ... IF NOT EXISTS` para todos os enums
+- `CREATE TABLE IF NOT EXISTS` para todas as tabelas
+- `DROP POLICY IF EXISTS` + `CREATE POLICY` para RLS
+- `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` para triggers
+- Funcoes com `CREATE OR REPLACE`
+- Nao criar trigger em `auth.users` diretamente (usar funcao do Supabase `handle_new_user` via API)
+
+**5. PM2 ecosystem corrigido**
+
+O `ecosystem.config.js` atual usa `--import tsx dist/index.js` que nao funciona em producao sem tsx instalado. Corrigir para usar o JS compilado diretamente ou garantir tsx como dependencia.
+
+### Detalhes tecnicos do init.sql
+
+Tabelas a criar (baseado no schema atual do Lovable Cloud):
+
+- `user_roles` (com enum `app_role`: admin, moderator, user, supervisor)
+- `profiles`
+- `instances` (com enum `instance_status`)
+- `contacts`
+- `conversations` (com enum `conversation_status`)
+- `messages` (com enum `message_status`, `message_direction`)
+- `campaigns` (com enum `campaign_status`)
+- `campaign_messages`
+- `automation_flows` (com enum `trigger_type`)
+- `quick_replies`
+- `settings`
+
+Funcoes: `update_updated_at_column`, `has_role`, `handle_new_user`
+Triggers: `updated_at` em todas as tabelas relevantes, `on_auth_user_created` em `auth.users`
+Storage bucket: `automation-media` (public)
+
+### Detalhes tecnicos da geracao de keys
+
+```bash
+JWT_SECRET=$(openssl rand -hex 32)
+
+# Gerar ANON_KEY (role=anon, iss=supabase, exp=10 anos)
+ANON_KEY=$(node -e "
+  const header = Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    role:'anon',
+    iss:'supabase',
+    iat:Math.floor(Date.now()/1000),
+    exp:Math.floor(Date.now()/1000)+315360000
+  })).toString('base64url');
+  const crypto = require('crypto');
+  const sig = crypto.createHmac('sha256','$JWT_SECRET').update(header+'.'+payload).digest('base64url');
+  console.log(header+'.'+payload+'.'+sig);
+")
+
+# SERVICE_ROLE_KEY (role=service_role, mesma logica)
 ```
 
-### Arquivos afetados
-- `server/src/baileys-manager.ts` — reescrita (remover persistência, adicionar EventEmitter)
-- `server/src/message-handler.ts` — novo (lógica de persistência extraída)
-- `server/src/index.ts` — registrar listener do EventEmitter
+### Nginx com 3 server blocks
 
-### O que NÃO muda
-- Frontend (hooks, componentes) — continua lendo do Supabase via realtime
-- Rota de envio (`messages/send`) — continua igual
-- Schema do banco — sem alterações
-- Rota de instâncias — sem alterações
+- `$DOMAIN` -> frontend estático (`/opt/zapmanager/dist`)
+- `$API_DOMAIN` -> proxy para `localhost:3001` (Baileys API)
+- `supabase.$DOMAIN` -> proxy para `localhost:8000` (Kong/Supabase API)
+
+O frontend usara `https://supabase.$DOMAIN` como `VITE_SUPABASE_URL`.
+
+### setup-admin.ts nao-interativo
+
+Modificar para aceitar `ADMIN_EMAIL` e `ADMIN_PASSWORD` como variaveis de ambiente, eliminando o readline interativo durante a instalacao.
 
