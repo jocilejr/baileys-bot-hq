@@ -2,18 +2,19 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useEffect, useRef } from "react";
 
-export function useConversations(status?: string) {
+export function useConversations(status?: string, chatType?: string) {
   const queryClient = useQueryClient();
   const realtimeFailed = useRef(false);
 
   const query = useQuery({
-    queryKey: ["conversations", status],
+    queryKey: ["conversations", status, chatType],
     queryFn: async () => {
       let q = supabase
         .from("conversations")
         .select("*, contacts(name, phone, tags), instances(name)")
         .order("last_message_at", { ascending: false, nullsFirst: false });
       if (status) q = q.eq("status", status as "open" | "closed" | "pending" | "bot");
+      if (chatType) q = q.eq("chat_type", chatType);
       const { data, error } = await q;
       if (error) throw error;
       return data;

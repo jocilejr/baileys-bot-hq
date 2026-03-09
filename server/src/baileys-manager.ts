@@ -162,9 +162,9 @@ export class BaileysManager {
     // Save credentials
     socket.ev.on("creds.update", saveCreds);
 
-    // Helper: check if JID is a private chat (not group, newsletter, or lid)
-    const isPrivateChat = (jid: string): boolean => {
-      return jid.endsWith("@s.whatsapp.net") && !jid.includes("@g.us") && !jid.includes("@newsletter") && !jid.includes("@lid");
+    // Helper: determine chat type from JID
+    const getChatType = (jid: string): "private" | "group" => {
+      return jid.includes("@g.us") ? "group" : "private";
     };
 
     // Helper: process and save a single message
@@ -172,13 +172,21 @@ export class BaileysManager {
       const remoteJid = msg.key.remoteJid;
       if (!remoteJid || remoteJid === "status@broadcast") return;
 
-      // Only process private chats
-      if (!isPrivateChat(remoteJid)) return;
+      // Skip newsletters
+      if (remoteJid.includes("@newsletter")) return;
 
+      const chatType = getChatType(remoteJid);
       const isFromMe = msg.key.fromMe === true;
-      const phone = remoteJid.replace("@s.whatsapp.net", "");
-      const pushName = msg.pushName || phone;
+      const identifier = remoteJid.replace(/@.*$/, "");
+      const pushName = msg.pushName || identifier;
+
+      this.logger.info(`processMessage: jid=${remoteJid}, chatType=${chatType}, fromMe=${isFromMe}`);
       const direction = isFromMe ? "outbound" : "inbound";
+
+      // For groups, use participant's pushName as sender_name
+      const senderName = chatType === "group" 
+        ? (msg.key.participant ? (msg.pushName || msg.key.participant.replace(/@.*$/, "")) : null)
+        : (isFromMe ? null : pushName);
 
       const content = msg.message?.conversation
         || msg.message?.extendedTextMessage?.text
@@ -212,51 +220,62 @@ export class BaileysManager {
       try {
         // Skip duplicate messages by external_id
         if (externalId) {
-          const { data: existing } = await this.supabase
+          const { data: existing, error: dupErr } = await this.supabase
             .from("messages")
             .select("id")
             .eq("external_id", externalId)
             .maybeSingle();
+          if (dupErr) this.logger.error(`Supabase dup check error: ${JSON.stringify(dupErr)}`);
           if (existing) return;
         }
 
         // Find or create contact
-        let { data: contact } = await this.supabase
+        let { data: contact, error: contactErr } = await this.supabase
           .from("contacts")
           .select("id")
-          .eq("phone", phone)
+          .eq("phone", identifier)
           .eq("instance_id", instanceId)
           .single();
+        if (contactErr && contactErr.code !== "PGRST116") {
+          this.logger.error(`Supabase contact select error: ${JSON.stringify(contactErr)}`);
+        }
 
         if (!contact) {
-          const { data: newContact } = await this.supabase
+          const { data: newContact, error: insertContactErr } = await this.supabase
             .from("contacts")
-            .insert({ phone, name: pushName, instance_id: instanceId })
+            .insert({ phone: identifier, name: pushName, instance_id: instanceId })
             .select("id")
             .single();
+          if (insertContactErr) this.logger.error(`Supabase contact insert error: ${JSON.stringify(insertContactErr)}`);
           contact = newContact;
         }
 
         if (!contact) return;
 
-        // Find or create conversation
-        let { data: conversation } = await this.supabase
+        // Find or create conversation (separated by chat_type)
+        let { data: conversation, error: convErr } = await this.supabase
           .from("conversations")
           .select("id")
           .eq("contact_id", contact.id)
           .eq("instance_id", instanceId)
+          .eq("chat_type", chatType)
           .single();
+        if (convErr && convErr.code !== "PGRST116") {
+          this.logger.error(`Supabase conversation select error: ${JSON.stringify(convErr)}`);
+        }
 
         if (!conversation) {
-          const { data: newConv } = await this.supabase
+          const { data: newConv, error: insertConvErr } = await this.supabase
             .from("conversations")
             .insert({
               contact_id: contact.id,
               instance_id: instanceId,
               status: "open",
+              chat_type: chatType,
             })
             .select("id")
             .single();
+          if (insertConvErr) this.logger.error(`Supabase conversation insert error: ${JSON.stringify(insertConvErr)}`);
           conversation = newConv;
         }
 
@@ -268,7 +287,7 @@ export class BaileysManager {
           content: content || null,
           direction,
           status: isFromMe ? "sent" : "delivered",
-          sender_name: isFromMe ? null : pushName,
+          sender_name: senderName,
           external_id: externalId,
           media_type: mediaType,
         };
@@ -276,11 +295,12 @@ export class BaileysManager {
           messageData.created_at = createdAt;
         }
 
-        await this.supabase.from("messages").insert(messageData);
+        const { error: msgInsertErr } = await this.supabase.from("messages").insert(messageData);
+        if (msgInsertErr) this.logger.error(`Supabase message insert error: ${JSON.stringify(msgInsertErr)}`);
 
         // Update conversation preview (only for real-time messages, not history sync)
         if (!isHistorySync) {
-          await this.supabase
+          const { error: updateErr } = await this.supabase
             .from("conversations")
             .update({
               last_message_at: new Date().toISOString(),
@@ -295,6 +315,7 @@ export class BaileysManager {
               ),
             })
             .eq("id", conversation.id);
+          if (updateErr) this.logger.error(`Supabase conversation update error: ${JSON.stringify(updateErr)}`);
         }
       } catch (err) {
         this.logger.error(`Error processing message: ${err}`);

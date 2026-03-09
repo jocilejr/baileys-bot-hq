@@ -144,6 +144,7 @@ CREATE TABLE IF NOT EXISTS public.conversations (
   last_message_preview text,
   unread_count integer DEFAULT 0,
   department text,
+  chat_type text NOT NULL DEFAULT 'private',
   created_at timestamptz NOT NULL DEFAULT now(),
   updated_at timestamptz NOT NULL DEFAULT now()
 );

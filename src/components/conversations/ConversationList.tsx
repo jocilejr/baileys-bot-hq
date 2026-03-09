@@ -2,7 +2,8 @@ import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Loader2, RefreshCw, Search, MessageSquare, Trash2 } from "lucide-react";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Loader2, RefreshCw, Search, MessageSquare, Trash2, Users } from "lucide-react";
 import {
   ContextMenu,
   ContextMenuContent,
@@ -23,6 +24,7 @@ export interface ConversationItem {
   last_message_preview: string | null;
   unread_count: number | null;
   department: string | null;
+  chat_type: string;
   created_at: string;
   updated_at: string;
   contacts?: { name: string; phone: string; tags: string[] | null } | null;
@@ -37,6 +39,8 @@ interface ConversationListProps {
   onDelete: (conv: ConversationItem) => void;
   onSync?: () => void;
   isSyncing?: boolean;
+  chatType: string;
+  onChatTypeChange: (type: string) => void;
 }
 
 function formatTime(dateStr: string | null) {
@@ -55,6 +59,8 @@ export function ConversationList({
   onDelete,
   onSync,
   isSyncing,
+  chatType,
+  onChatTypeChange,
 }: ConversationListProps) {
   const [search, setSearch] = useState("");
 
@@ -85,6 +91,18 @@ export function ConversationList({
             </Button>
           )}
         </div>
+        <Tabs value={chatType} onValueChange={onChatTypeChange}>
+          <TabsList className="w-full">
+            <TabsTrigger value="private" className="flex-1 gap-1.5">
+              <MessageSquare className="h-3.5 w-3.5" />
+              Conversas
+            </TabsTrigger>
+            <TabsTrigger value="group" className="flex-1 gap-1.5">
+              <Users className="h-3.5 w-3.5" />
+              Grupos
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -115,6 +133,7 @@ export function ConversationList({
               const isSelected = selected?.id === conv.id;
               const hasUnread = (conv.unread_count ?? 0) > 0;
               const contactName = conv.contacts?.name || "Desconhecido";
+              const isGroup = conv.chat_type === "group";
 
               return (
                 <div key={conv.id}>
@@ -129,7 +148,13 @@ export function ConversationList({
                             : "hover:bg-secondary/70"
                         )}
                       >
-                        <ContactAvatar name={contactName} size="md" />
+                        {isGroup ? (
+                          <div className="h-10 w-10 rounded-full bg-secondary flex items-center justify-center shrink-0">
+                            <Users className="h-5 w-5 text-muted-foreground" />
+                          </div>
+                        ) : (
+                          <ContactAvatar name={contactName} size="md" />
+                        )}
 
                         <div className="min-w-0 overflow-hidden">
                           <div className="flex items-center gap-2 min-w-0">
