@@ -1,81 +1,145 @@
 
 
-## Investigação e Nova Abordagem
+## Plano: Instalador 100% Autônomo do ZapManager
 
-### Problema 1: LID → Telefone Real
+### Objetivo
 
-Pesquisando issues no repositório oficial do Baileys, o problema de LID é **bem documentado** e tem soluções específicas:
+Reescrever completamente o `install.sh` para que o sistema seja **totalmente independente**. O usuário fornece apenas 5 informações:
 
-- No Baileys v6+, o WhatsApp migrou para LIDs (Local Identifiers) em vez de números de telefone
-- A abordagem atual de manter um `lidMap` manual alimentado por `contacts.update` e `messaging-history.set` **não funciona** porque esses eventos frequentemente não entregam o campo `lid` junto com o `id`
-- A solução correta é usar **`socket.signalRepository.lidMapping.getPNForLID()`** — uma API interna do Baileys que consulta o mapeamento LID↔PN armazenado nas credenciais da sessão
+1. Dominio do frontend
+2. Dominio da API
+3. Email para SSL
+4. Email do admin
+5. Senha do admin
 
-### Problema 2: Mensagens em tempo real não aparecem
+Tudo mais (Supabase self-hosted, chaves, banco, migrations, Baileys) e configurado automaticamente.
 
-Issues abertas no GitHub (#2382, #2363, #1936) documentam que `messages.upsert` pode parar de disparar quando há alto tráfego de status/newsletters. A solução recomendada:
+### Arquivos a criar/modificar
 
-- Adicionar **`shouldIgnoreJid`** no socket para filtrar `status@broadcast` e `@newsletter`, liberando o event loop
-- Adicionar **`emitOwnEvents: true`** e **`fireInitQueries: true`** para garantir que eventos próprios sejam emitidos
-
----
-
-## Alterações Propostas
-
-### `server/src/baileys-manager.ts`
-
-**1. Configuração do socket** — adicionar opções que previnem travamento do event loop:
-```typescript
-const socket = makeWASocket({
-  // ... existente ...
-  shouldIgnoreJid: (jid) => jid === "status@broadcast" || jid.includes("@newsletter"),
-  emitOwnEvents: true,
-  fireInitQueries: true,
-});
-```
-
-**2. Resolução de LID** — substituir o `lidMap` manual pela API nativa do Baileys:
-```typescript
-// Em vez de manter lidMap manual:
-if (chatType === "private" && isLid) {
-  const lidJid = remoteJid; // ex: "123456@lid"
-  try {
-    // API nativa do Baileys para resolver LID → PN
-    const pn = await socket.signalRepository.lidMapping.getPNForLID(lidJid);
-    if (pn) {
-      identifier = pn.replace(/@.*$/, "");
-    } else {
-      // Fallback: tentar onWhatsApp
-      identifier = lidNumber;
-    }
-  } catch {
-    identifier = lidNumber;
-  }
-}
-```
-
-**3. Remover `lidMaps`** — eliminar toda a infraestrutura manual de mapeamento (o Map, os listeners de `contacts.update` e `messaging-history.set` para mapping) já que a API nativa substitui tudo isso.
-
-**4. Adicionar log completo de debug** para mensagens em tempo real:
-```typescript
-socket.ev.on("messages.upsert", async ({ messages, type }) => {
-  this.logger.info(`messages.upsert: ${messages.length} msgs, type: ${type}`);
-  for (const msg of messages) {
-    // Log raw keys para debug
-    this.logger.info(`MSG RAW: jid=${msg.key.remoteJid}, id=${msg.key.id}, fromMe=${msg.key.fromMe}, keys=${Object.keys(msg.message || {}).join(",")}`);
-    await processMessage(msg, type !== "notify");
-  }
-});
-```
-
----
-
-## Resumo
-
-| Mudança | Motivo |
+| Arquivo | Acao |
 |---|---|
-| Adicionar `shouldIgnoreJid` | Prevenir bloqueio do event loop por status/newsletters |
-| Usar `signalRepository.lidMapping.getPNForLID()` | Resolução nativa de LID, comprovada nas docs oficiais |
-| Remover `lidMaps` manual | Abordagem manual não funciona, API nativa é mais confiável |
-| Adicionar `emitOwnEvents` + `fireInitQueries` | Garantir que todos os eventos sejam emitidos |
-| Log detalhado no `messages.upsert` | Visibilidade completa para debug |
+| `install.sh` | Reescrever completo |
+| `migrations/init.sql` | Criar com todas as tabelas, enums, RLS, triggers, funcoes |
+| `ecosystem.config.js` | Corrigir script path para producao |
+| `server/src/setup-admin.ts` | Adaptar para receber args via env (sem interativo) |
+| `.env.production.template` | Template para o frontend com variaveis do Supabase local |
+
+### Fluxo do instalador
+
+```text
+Entrada do usuario:
+  DOMAIN, API_DOMAIN, SSL_EMAIL, ADMIN_EMAIL, ADMIN_PASSWORD
+
+1. Instalar dependencias (Node 20, PM2, Nginx, Docker, Certbot)
+2. Clonar repositorio
+3. Instalar Supabase Docker self-hosted
+   a. git clone supabase/supabase -> /opt/supabase
+   b. Gerar senhas automaticas (POSTGRES_PASSWORD, JWT_SECRET, ANON_KEY, SERVICE_ROLE_KEY)
+   c. Configurar .env ANTES do primeiro boot
+   d. Desabilitar analytics (causa bloqueio)
+   e. docker compose up -d
+   f. Aguardar health checks (db, auth, rest)
+4. Executar migrations (init.sql) via docker exec com usuario postgres em modo trust temporario
+5. Configurar frontend (.env.production apontando para Supabase local)
+6. Build frontend
+7. Configurar backend (server/.env com keys locais)
+8. Build e instalar backend
+9. Criar admin automaticamente (sem interacao)
+10. Nginx (frontend + API + Supabase dashboard)
+11. SSL via Certbot
+12. PM2 start
+```
+
+### Correcoes de bugs conhecidos
+
+**1. Senha do PostgreSQL / roles internas**
+
+O Supabase Docker inicializa roles (`supabase_admin`, `supabase_auth_admin`) com a senha do `POSTGRES_PASSWORD` no primeiro boot. Se o volume ja existir com senha diferente, falha. Solucao:
+
+- Sempre `docker compose down -v` antes do primeiro `up`
+- Gerar `POSTGRES_PASSWORD` automaticamente e injetar no `.env` ANTES do boot
+- Usar `pg_isready` para confirmar que o banco aceitou conexoes antes de rodar migrations
+
+**2. Analytics bloqueando servicos**
+
+O container `supabase-analytics` (Logflare) frequentemente falha e bloqueia kong/auth/rest por causa do `depends_on: condition: service_healthy`. Solucao:
+
+- Usar `sed` para trocar `service_healthy` por `service_started` no docker-compose.yml do Supabase
+- Opcionalmente desabilitar analytics completamente (nao e critico)
+
+**3. Geracao automatica de JWT keys**
+
+O Supabase precisa de `JWT_SECRET`, `ANON_KEY` e `SERVICE_ROLE_KEY`. Estas sao derivadas do JWT_SECRET usando payloads especificos. O instalador vai:
+
+- Gerar um `JWT_SECRET` aleatorio
+- Usar `node` inline para gerar `ANON_KEY` e `SERVICE_ROLE_KEY` com os payloads corretos do Supabase (`role: anon` e `role: service_role`)
+
+**4. Migration SQL robusta**
+
+Criar `migrations/init.sql` com:
+
+- `DO $$ ... IF NOT EXISTS` para todos os enums
+- `CREATE TABLE IF NOT EXISTS` para todas as tabelas
+- `DROP POLICY IF EXISTS` + `CREATE POLICY` para RLS
+- `DROP TRIGGER IF EXISTS` + `CREATE TRIGGER` para triggers
+- Funcoes com `CREATE OR REPLACE`
+- Nao criar trigger em `auth.users` diretamente (usar funcao do Supabase `handle_new_user` via API)
+
+**5. PM2 ecosystem corrigido**
+
+O `ecosystem.config.js` atual usa `--import tsx dist/index.js` que nao funciona em producao sem tsx instalado. Corrigir para usar o JS compilado diretamente ou garantir tsx como dependencia.
+
+### Detalhes tecnicos do init.sql
+
+Tabelas a criar (baseado no schema atual do Lovable Cloud):
+
+- `user_roles` (com enum `app_role`: admin, moderator, user, supervisor)
+- `profiles`
+- `instances` (com enum `instance_status`)
+- `contacts`
+- `conversations` (com enum `conversation_status`)
+- `messages` (com enum `message_status`, `message_direction`)
+- `campaigns` (com enum `campaign_status`)
+- `campaign_messages`
+- `automation_flows` (com enum `trigger_type`)
+- `quick_replies`
+- `settings`
+
+Funcoes: `update_updated_at_column`, `has_role`, `handle_new_user`
+Triggers: `updated_at` em todas as tabelas relevantes, `on_auth_user_created` em `auth.users`
+Storage bucket: `automation-media` (public)
+
+### Detalhes tecnicos da geracao de keys
+
+```bash
+JWT_SECRET=$(openssl rand -hex 32)
+
+# Gerar ANON_KEY (role=anon, iss=supabase, exp=10 anos)
+ANON_KEY=$(node -e "
+  const header = Buffer.from(JSON.stringify({alg:'HS256',typ:'JWT'})).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    role:'anon',
+    iss:'supabase',
+    iat:Math.floor(Date.now()/1000),
+    exp:Math.floor(Date.now()/1000)+315360000
+  })).toString('base64url');
+  const crypto = require('crypto');
+  const sig = crypto.createHmac('sha256','$JWT_SECRET').update(header+'.'+payload).digest('base64url');
+  console.log(header+'.'+payload+'.'+sig);
+")
+
+# SERVICE_ROLE_KEY (role=service_role, mesma logica)
+```
+
+### Nginx com 3 server blocks
+
+- `$DOMAIN` -> frontend estático (`/opt/zapmanager/dist`)
+- `$API_DOMAIN` -> proxy para `localhost:3001` (Baileys API)
+- `supabase.$DOMAIN` -> proxy para `localhost:8000` (Kong/Supabase API)
+
+O frontend usara `https://supabase.$DOMAIN` como `VITE_SUPABASE_URL`.
+
+### setup-admin.ts nao-interativo
+
+Modificar para aceitar `ADMIN_EMAIL` e `ADMIN_PASSWORD` como variaveis de ambiente, eliminando o readline interativo durante a instalacao.
 

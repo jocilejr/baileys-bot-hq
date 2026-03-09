@@ -28,7 +28,6 @@ export class BaileysManager {
   private startingInstances = new Set<string>();
   private reconnectTimers = new Map<string, NodeJS.Timeout>();
   private intentionalStops = new Set<string>();
-  private lidMaps = new Map<string, Map<string, string>>(); // instanceId → (lidNumber → phoneNumber)
 
   constructor(supabase: SupabaseClient, logger: Logger) {
     this.supabase = supabase;
@@ -85,30 +84,17 @@ export class BaileysManager {
       qrTimeout: 60000,
       syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
+      shouldIgnoreJid: (jid: string) => jid === "status@broadcast" || jid.includes("@newsletter"),
+      emitOwnEvents: true,
+      fireInitQueries: true,
     });
 
     const session: Session = { socket, instanceId, retryCount: 0 };
     this.sessions.set(instanceId, session);
 
-    // Initialize LID map for this instance
-    if (!this.lidMaps.has(instanceId)) {
-      this.lidMaps.set(instanceId, new Map());
-    }
-    const lidMap = this.lidMaps.get(instanceId)!;
-
-    // Listen for contacts to build LID → Phone mapping
-    // contacts.set does not exist in Baileys v6 — LID mapping is done in messaging-history.set
-
+    // contacts.update — log for debugging only
     socket.ev.on("contacts.update", (updates) => {
-      for (const c of updates) {
-        const cId = (c as any).id;
-        const cLid = (c as any).lid;
-        if (cId && cLid) {
-          const phone = cId.replace(/@.*$/, "");
-          const lid = cLid.replace(/@.*$/, "");
-          lidMap.set(lid, phone);
-        }
-      }
+      this.logger.info(`contacts.update for ${instanceId}: ${updates.length} contacts`);
     });
 
     socket.ev.on("connection.update", async (update) => {
@@ -217,21 +203,41 @@ export class BaileysManager {
       
       if (chatType === "private" && isLid) {
         const lidNumber = remoteJid.replace(/@.*$/, "");
-        const lidMap = this.lidMaps.get(instanceId);
-        const resolvedPhone = lidMap?.get(lidNumber);
+        let resolved = false;
         
-        if (resolvedPhone) {
-          identifier = resolvedPhone;
-          this.logger.info(`LID resolved via map: ${lidNumber} -> ${identifier}`);
-        } else {
+        // Try native Baileys API for LID → PN resolution
+        try {
+          const pn = await (socket as any).signalRepository?.lidMapping?.getPNForLID?.(remoteJid);
+          if (pn) {
+            identifier = pn.replace(/@.*$/, "");
+            this.logger.info(`LID resolved via native API: ${lidNumber} -> ${identifier}`);
+            resolved = true;
+          }
+        } catch (e) {
+          this.logger.warn(`LID native API failed for ${lidNumber}: ${e}`);
+        }
+        
+        if (!resolved) {
           // Fallback: try participant
           const participant = msg.key.participant;
           if (participant && participant.includes("@s.whatsapp.net")) {
             identifier = participant.replace(/@.*$/, "");
             this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
           } else {
-            identifier = lidNumber;
-            this.logger.warn(`LID unresolved: ${lidNumber} (map size: ${lidMap?.size || 0}, participant: ${participant || "none"})`);
+            // Fallback: try onWhatsApp query
+            try {
+              const results = await socket.onWhatsApp(lidNumber);
+              if (results && results.length > 0 && results[0].jid) {
+                identifier = results[0].jid.replace(/@.*$/, "");
+                this.logger.info(`LID resolved via onWhatsApp: ${lidNumber} -> ${identifier}`);
+              } else {
+                identifier = lidNumber;
+                this.logger.warn(`LID unresolved (all methods failed): ${lidNumber}`);
+              }
+            } catch {
+              identifier = lidNumber;
+              this.logger.warn(`LID unresolved: ${lidNumber}`);
+            }
           }
         }
       } else {
@@ -412,31 +418,20 @@ export class BaileysManager {
 
       for (const msg of messages) {
         const jid = msg.key.remoteJid || "";
-        this.logger.info(`Processing msg ${msg.key.id} from ${jid} (fromMe: ${msg.key.fromMe}, type: ${type})`);
+        const rawKeys = Object.keys(msg.message || {}).join(",");
+        this.logger.info(`MSG RAW: jid=${jid}, id=${msg.key.id}, fromMe=${msg.key.fromMe}, type=${type}, keys=${rawKeys}`);
         await processMessage(msg, isHistorySync);
       }
     });
 
     // Historical messages sync
     socket.ev.on("messaging-history.set", async ({ messages, contacts, isLatest }) => {
-      // Build LID map from contacts delivered in history sync
       if (contacts) {
-        // Log first 3 contacts raw data for LID debugging
+        // Log first 3 contacts raw data for debugging
         for (let i = 0; i < Math.min(3, contacts.length); i++) {
           this.logger.info(`Contact sample ${i}: ${JSON.stringify(contacts[i])}`);
         }
-        let mapped = 0;
-        for (const c of contacts) {
-          const cId = (c as any).id;
-          const cLid = (c as any).lid;
-          if (cId && cLid) {
-            const phone = cId.replace(/@.*$/, "");
-            const lid = cLid.replace(/@.*$/, "");
-            lidMap.set(lid, phone);
-            mapped++;
-          }
-        }
-        this.logger.info(`History sync LID mapping for ${instanceId}: ${contacts.length} contacts, ${mapped} mapped (total map: ${lidMap.size})`);
+        this.logger.info(`History sync contacts for ${instanceId}: ${contacts.length} contacts`);
       }
 
       this.logger.info(`History sync for ${instanceId}: ${messages.length} messages (isLatest: ${isLatest})`);
