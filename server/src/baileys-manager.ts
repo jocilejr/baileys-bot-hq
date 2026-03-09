@@ -82,6 +82,7 @@ export class BaileysManager {
       generateHighQualityLinkPreview: true,
       browser: ["ZapManager", "Chrome", "120.0.0"],
       qrTimeout: 60000,
+      syncFullHistory: true,
     });
 
     const session: Session = { socket, instanceId, retryCount: 0 };
@@ -160,146 +161,163 @@ export class BaileysManager {
     // Save credentials
     socket.ev.on("creds.update", saveCreds);
 
-    // Incoming messages
-    socket.ev.on("messages.upsert", async ({ messages, type }) => {
-      // Accept both "notify" (real-time) and "append" (history sync)
-      if (type !== "notify" && type !== "append") return;
+    // Helper: check if JID is a private chat (not group, newsletter, or lid)
+    const isPrivateChat = (jid: string): boolean => {
+      return jid.endsWith("@s.whatsapp.net") && !jid.includes("@g.us") && !jid.includes("@newsletter") && !jid.includes("@lid");
+    };
 
-      const isHistorySync = type === "append";
+    // Helper: process and save a single message
+    const processMessage = async (msg: proto.IWebMessageInfo, isHistorySync: boolean) => {
+      const remoteJid = msg.key.remoteJid;
+      if (!remoteJid || remoteJid === "status@broadcast") return;
 
-      for (const msg of messages) {
-        const remoteJid = msg.key.remoteJid;
-        if (!remoteJid || remoteJid === "status@broadcast") continue;
+      // Only process private chats
+      if (!isPrivateChat(remoteJid)) return;
 
-        // Skip group messages (optional — remove if you want group support)
-        if (remoteJid.endsWith("@g.us")) continue;
+      const isFromMe = msg.key.fromMe === true;
+      const phone = remoteJid.replace("@s.whatsapp.net", "");
+      const pushName = msg.pushName || phone;
+      const direction = isFromMe ? "outbound" : "inbound";
 
-        const isFromMe = msg.key.fromMe === true;
-        const phone = remoteJid.replace("@s.whatsapp.net", "");
-        const pushName = msg.pushName || phone;
-        const direction = isFromMe ? "outbound" : "inbound";
+      const content = msg.message?.conversation
+        || msg.message?.extendedTextMessage?.text
+        || msg.message?.imageMessage?.caption
+        || msg.message?.videoMessage?.caption
+        || "";
 
-        const content = msg.message?.conversation
-          || msg.message?.extendedTextMessage?.text
-          || msg.message?.imageMessage?.caption
-          || msg.message?.videoMessage?.caption
-          || "";
+      let mediaType: string | null = null;
+      if (msg.message?.imageMessage) mediaType = "image";
+      else if (msg.message?.videoMessage) mediaType = "video";
+      else if (msg.message?.audioMessage) mediaType = "audio";
+      else if (msg.message?.documentMessage) mediaType = "document";
+      else if (msg.message?.stickerMessage) mediaType = "sticker";
 
-        let mediaType: string | null = null;
-        if (msg.message?.imageMessage) mediaType = "image";
-        else if (msg.message?.videoMessage) mediaType = "video";
-        else if (msg.message?.audioMessage) mediaType = "audio";
-        else if (msg.message?.documentMessage) mediaType = "document";
-        else if (msg.message?.stickerMessage) mediaType = "sticker";
+      // Skip protocol/system messages with no content
+      if (!content && !mediaType) return;
 
-        // Skip protocol/system messages with no content
-        if (!content && !mediaType) continue;
+      const externalId = msg.key.id || null;
 
-        const externalId = msg.key.id || null;
-
-        // Convert messageTimestamp to ISO string for historical ordering
-        let createdAt: string | undefined;
-        if (msg.messageTimestamp) {
-          const ts = typeof msg.messageTimestamp === "number"
-            ? msg.messageTimestamp
-            : Number(msg.messageTimestamp);
-          if (ts > 0) {
-            createdAt = new Date(ts * 1000).toISOString();
-          }
-        }
-
-        try {
-          // Skip duplicate messages by external_id
-          if (externalId) {
-            const { data: existing } = await this.supabase
-              .from("messages")
-              .select("id")
-              .eq("external_id", externalId)
-              .maybeSingle();
-            if (existing) continue;
-          }
-
-          // Find or create contact
-          let { data: contact } = await this.supabase
-            .from("contacts")
-            .select("id")
-            .eq("phone", phone)
-            .eq("instance_id", instanceId)
-            .single();
-
-          if (!contact) {
-            const { data: newContact } = await this.supabase
-              .from("contacts")
-              .insert({ phone, name: pushName, instance_id: instanceId })
-              .select("id")
-              .single();
-            contact = newContact;
-          }
-
-          if (!contact) continue;
-
-          // Find or create conversation
-          let { data: conversation } = await this.supabase
-            .from("conversations")
-            .select("id")
-            .eq("contact_id", contact.id)
-            .eq("instance_id", instanceId)
-            .single();
-
-          if (!conversation) {
-            const { data: newConv } = await this.supabase
-              .from("conversations")
-              .insert({
-                contact_id: contact.id,
-                instance_id: instanceId,
-                status: "open",
-              })
-              .select("id")
-              .single();
-            conversation = newConv;
-          }
-
-          if (!conversation) continue;
-
-          // Insert message with correct timestamp
-          const messageData: any = {
-            conversation_id: conversation.id,
-            content: content || null,
-            direction,
-            status: isFromMe ? "sent" : "delivered",
-            sender_name: isFromMe ? null : pushName,
-            external_id: externalId,
-            media_type: mediaType,
-          };
-          if (createdAt) {
-            messageData.created_at = createdAt;
-          }
-
-          await this.supabase.from("messages").insert(messageData);
-
-          // Update conversation preview (only for most recent messages, not history sync)
-          if (!isHistorySync) {
-            await this.supabase
-              .from("conversations")
-              .update({
-                last_message_at: new Date().toISOString(),
-                last_message_preview: content?.substring(0, 100) || `[${mediaType || "mensagem"}]`,
-                unread_count: isFromMe ? 0 : (
-                  (await this.supabase
-                    .from("conversations")
-                    .select("unread_count")
-                    .eq("id", conversation.id)
-                    .single()
-                  ).data?.unread_count + 1 || 1
-                ),
-              })
-              .eq("id", conversation.id);
-          }
-
-        } catch (err) {
-          this.logger.error(`Error processing message: ${err}`);
+      // Convert messageTimestamp to ISO string
+      let createdAt: string | undefined;
+      if (msg.messageTimestamp) {
+        const ts = typeof msg.messageTimestamp === "number"
+          ? msg.messageTimestamp
+          : Number(msg.messageTimestamp);
+        if (ts > 0) {
+          createdAt = new Date(ts * 1000).toISOString();
         }
       }
+
+      try {
+        // Skip duplicate messages by external_id
+        if (externalId) {
+          const { data: existing } = await this.supabase
+            .from("messages")
+            .select("id")
+            .eq("external_id", externalId)
+            .maybeSingle();
+          if (existing) return;
+        }
+
+        // Find or create contact
+        let { data: contact } = await this.supabase
+          .from("contacts")
+          .select("id")
+          .eq("phone", phone)
+          .eq("instance_id", instanceId)
+          .single();
+
+        if (!contact) {
+          const { data: newContact } = await this.supabase
+            .from("contacts")
+            .insert({ phone, name: pushName, instance_id: instanceId })
+            .select("id")
+            .single();
+          contact = newContact;
+        }
+
+        if (!contact) return;
+
+        // Find or create conversation
+        let { data: conversation } = await this.supabase
+          .from("conversations")
+          .select("id")
+          .eq("contact_id", contact.id)
+          .eq("instance_id", instanceId)
+          .single();
+
+        if (!conversation) {
+          const { data: newConv } = await this.supabase
+            .from("conversations")
+            .insert({
+              contact_id: contact.id,
+              instance_id: instanceId,
+              status: "open",
+            })
+            .select("id")
+            .single();
+          conversation = newConv;
+        }
+
+        if (!conversation) return;
+
+        // Insert message with correct timestamp
+        const messageData: any = {
+          conversation_id: conversation.id,
+          content: content || null,
+          direction,
+          status: isFromMe ? "sent" : "delivered",
+          sender_name: isFromMe ? null : pushName,
+          external_id: externalId,
+          media_type: mediaType,
+        };
+        if (createdAt) {
+          messageData.created_at = createdAt;
+        }
+
+        await this.supabase.from("messages").insert(messageData);
+
+        // Update conversation preview (only for real-time messages, not history sync)
+        if (!isHistorySync) {
+          await this.supabase
+            .from("conversations")
+            .update({
+              last_message_at: new Date().toISOString(),
+              last_message_preview: content?.substring(0, 100) || `[${mediaType || "mensagem"}]`,
+              unread_count: isFromMe ? 0 : (
+                (await this.supabase
+                  .from("conversations")
+                  .select("unread_count")
+                  .eq("id", conversation.id)
+                  .single()
+                ).data?.unread_count + 1 || 1
+              ),
+            })
+            .eq("id", conversation.id);
+        }
+      } catch (err) {
+        this.logger.error(`Error processing message: ${err}`);
+      }
+    };
+
+    // Incoming messages (real-time)
+    socket.ev.on("messages.upsert", async ({ messages, type }) => {
+      if (type !== "notify") return;
+
+      for (const msg of messages) {
+        await processMessage(msg, false);
+      }
+    });
+
+    // Historical messages sync
+    socket.ev.on("messaging-history.set", async ({ messages, isLatest }) => {
+      this.logger.info(`History sync for ${instanceId}: ${messages.length} messages (isLatest: ${isLatest})`);
+      
+      for (const msg of messages) {
+        await processMessage(msg, true);
+      }
+      
+      this.logger.info(`History sync completed for ${instanceId}`);
     });
   }
 
