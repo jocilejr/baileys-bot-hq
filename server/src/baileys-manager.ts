@@ -249,6 +249,7 @@ export class BaileysManager {
         }
 
         // Find or create contact
+        // First try by phone number
         let { data: contact, error: contactErr } = await this.supabase
           .from("contacts")
           .select("id")
@@ -257,6 +258,22 @@ export class BaileysManager {
           .single();
         if (contactErr && contactErr.code !== "PGRST116") {
           this.logger.error(`Supabase contact select error: ${JSON.stringify(contactErr)}`);
+        }
+
+        // If not found and identifier looks like a LID, try finding by pushName
+        if (!contact && isLid && pushName && pushName !== identifier) {
+          const { data: nameContact, error: nameErr } = await this.supabase
+            .from("contacts")
+            .select("id")
+            .eq("name", pushName)
+            .eq("instance_id", instanceId)
+            .limit(1)
+            .maybeSingle();
+          if (nameErr) this.logger.error(`Supabase contact name lookup error: ${JSON.stringify(nameErr)}`);
+          if (nameContact) {
+            contact = nameContact;
+            this.logger.info(`LID contact matched by name: "${pushName}" -> ${nameContact.id}`);
+          }
         }
 
         if (!contact) {
