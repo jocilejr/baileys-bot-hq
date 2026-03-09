@@ -80,6 +80,8 @@ export class BaileysManager {
       printQRInTerminal: false,
       logger: this.logger.child({ instance: instanceId }) as any,
       generateHighQualityLinkPreview: true,
+      browser: ["ZapManager", "Chrome", "120.0.0"],
+      qrTimeout: 60000,
     });
 
     const session: Session = { socket, instanceId, retryCount: 0 };
