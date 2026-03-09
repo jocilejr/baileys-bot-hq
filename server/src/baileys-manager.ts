@@ -198,7 +198,7 @@ export class BaileysManager {
       const isFromMe = msg.key.fromMe === true;
       
       // Resolve LID (@lid) to real phone number
-      let identifier: string;
+      let identifier: string = remoteJid.replace(/@.*$/, "");
       const isLid = remoteJid.includes("@lid");
       
       if (chatType === "private" && isLid) {
