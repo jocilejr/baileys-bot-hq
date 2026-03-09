@@ -84,6 +84,9 @@ export class BaileysManager {
       qrTimeout: 60000,
       syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
+      shouldIgnoreJid: (jid: string) => jid === "status@broadcast" || jid.includes("@newsletter"),
+      emitOwnEvents: true,
+      fireInitQueries: true,
     });
 
     const session: Session = { socket, instanceId, retryCount: 0 };
