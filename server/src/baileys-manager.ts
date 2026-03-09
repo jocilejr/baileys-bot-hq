@@ -25,9 +25,10 @@ export class BaileysManager {
   private sessions = new Map<string, Session>();
   private supabase: SupabaseClient;
   private logger: Logger;
-  private startingInstances = new Set<string>(); // Mutex para prevenir chamadas concorrentes
-  private reconnectTimers = new Map<string, NodeJS.Timeout>(); // Rastrear timers de reconexão
-  private intentionalStops = new Set<string>(); // Rastrear paradas intencionais
+  private startingInstances = new Set<string>();
+  private reconnectTimers = new Map<string, NodeJS.Timeout>();
+  private intentionalStops = new Set<string>();
+  private lidMaps = new Map<string, Map<string, string>>(); // instanceId → (lidNumber → phoneNumber)
 
   constructor(supabase: SupabaseClient, logger: Logger) {
     this.supabase = supabase;
