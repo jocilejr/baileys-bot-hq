@@ -53,6 +53,8 @@ const Chat = () => {
           selected={selected}
           onSelect={(conv) => setSelected(conv)}
           onDelete={handleDelete}
+          chatType={chatType}
+          onChatTypeChange={(type) => { setChatType(type); setSelected(null); }}
         />
       </div>
 
