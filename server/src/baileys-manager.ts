@@ -256,6 +256,15 @@ export class BaileysManager {
   }
 
   async stopSession(instanceId: string): Promise<void> {
+    this.intentionalStops.add(instanceId); // Marcar como parada intencional
+    
+    // Cancelar timer de reconexão pendente, se existir
+    const timer = this.reconnectTimers.get(instanceId);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(instanceId);
+    }
+
     const session = this.sessions.get(instanceId);
     if (session) {
       session.socket.end(undefined);
