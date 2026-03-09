@@ -63,7 +63,7 @@ export class BaileysManager {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        const qrDataUrl = await QRCode.toDataURL(qr, { width: 300 });
+        const qrDataUrl = await QRCode.toDataURL(qr, { width: 512, margin: 2, errorCorrectionLevel: 'M' });
         await this.supabase
           .from("instances")
           .update({ qr_code: qrDataUrl, status: "qr_pending" })
