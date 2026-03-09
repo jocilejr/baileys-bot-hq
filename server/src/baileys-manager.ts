@@ -82,6 +82,7 @@ export class BaileysManager {
       generateHighQualityLinkPreview: true,
       browser: ["ZapManager", "Chrome", "120.0.0"],
       qrTimeout: 60000,
+      keepAliveIntervalMs: 30000,
       syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
       shouldIgnoreJid: (jid: string) => jid === "status@broadcast" || jid.includes("@newsletter"),
@@ -202,46 +203,20 @@ export class BaileysManager {
       const isLid = remoteJid.includes("@lid");
       
       if (chatType === "private" && isLid) {
-        const lidNumber = remoteJid.replace(/@.*$/, "");
-        let resolved = false;
+        const lidNumber = identifier;
         
-        // Try native Baileys API for LID → PN resolution
-        try {
-          const pn = await (socket as any).signalRepository?.lidMapping?.getPNForLID?.(remoteJid);
-          if (pn) {
-            identifier = pn.replace(/@.*$/, "");
-            this.logger.info(`LID resolved via native API: ${lidNumber} -> ${identifier}`);
-            resolved = true;
-          }
-        } catch (e) {
-          this.logger.warn(`LID native API failed for ${lidNumber}: ${e}`);
+        // 1. Try participant (most reliable for LID)
+        const participant = msg.key.participant;
+        if (participant && participant.includes("@s.whatsapp.net")) {
+          identifier = participant.replace(/@.*$/, "");
+          this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
+        } else if (msg.pushName && msg.pushName !== lidNumber) {
+          // 2. Keep LID but use pushName for contact matching
+          this.logger.info(`LID unresolved, using pushName "${msg.pushName}" for matching: ${lidNumber}`);
+        } else {
+          // 3. Store with raw LID
+          this.logger.warn(`LID unresolved, storing raw: ${lidNumber}`);
         }
-        
-        if (!resolved) {
-          // Fallback: try participant
-          const participant = msg.key.participant;
-          if (participant && participant.includes("@s.whatsapp.net")) {
-            identifier = participant.replace(/@.*$/, "");
-            this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
-          } else {
-            // Fallback: try onWhatsApp query
-            try {
-              const results = await socket.onWhatsApp(lidNumber);
-              if (results && results.length > 0 && results[0].jid) {
-                identifier = results[0].jid.replace(/@.*$/, "");
-                this.logger.info(`LID resolved via onWhatsApp: ${lidNumber} -> ${identifier}`);
-              } else {
-                identifier = lidNumber;
-                this.logger.warn(`LID unresolved (all methods failed): ${lidNumber}`);
-              }
-            } catch {
-              identifier = lidNumber;
-              this.logger.warn(`LID unresolved: ${lidNumber}`);
-            }
-          }
-        }
-      } else {
-        identifier = remoteJid.replace(/@.*$/, "");
       }
       
       const pushName = msg.pushName || identifier;
@@ -412,7 +387,7 @@ export class BaileysManager {
 
     // Incoming messages (real-time)
     socket.ev.on("messages.upsert", async ({ messages, type }) => {
-      this.logger.info(`messages.upsert for ${instanceId}: ${messages.length} msgs, type: ${type}`);
+      this.logger.info(`>>> UPSERT EVENT for ${instanceId}: ${messages.length} msgs, type=${type}`);
       
       const isHistorySync = type !== "notify";
 
@@ -424,23 +399,28 @@ export class BaileysManager {
       }
     });
 
-    // Historical messages sync
+    // Historical messages sync — non-blocking batch processing
     socket.ev.on("messaging-history.set", async ({ messages, contacts, isLatest }) => {
       if (contacts) {
-        // Log first 3 contacts raw data for debugging
-        for (let i = 0; i < Math.min(3, contacts.length); i++) {
-          this.logger.info(`Contact sample ${i}: ${JSON.stringify(contacts[i])}`);
-        }
         this.logger.info(`History sync contacts for ${instanceId}: ${contacts.length} contacts`);
       }
 
       this.logger.info(`History sync for ${instanceId}: ${messages.length} messages (isLatest: ${isLatest})`);
       
-      for (const msg of messages) {
-        await processMessage(msg, true);
-      }
-      
-      this.logger.info(`History sync completed for ${instanceId}`);
+      // Process in batches with setTimeout to free event loop for real-time messages
+      const BATCH_SIZE = 10;
+      const processBatch = async (startIndex: number) => {
+        const end = Math.min(startIndex + BATCH_SIZE, messages.length);
+        for (let i = startIndex; i < end; i++) {
+          await processMessage(messages[i], true);
+        }
+        if (end < messages.length) {
+          setTimeout(() => processBatch(end), 100);
+        } else {
+          this.logger.info(`History sync completed for ${instanceId}`);
+        }
+      };
+      processBatch(0); // NÃO usar await — libera event loop
     });
   }
 
