@@ -6,7 +6,8 @@ import { ChatPanel } from "@/components/conversations/ChatPanel";
 import { RightPanel } from "@/components/conversations/RightPanel";
 
 const Chat = () => {
-  const { data: conversations, isLoading: loadingConvs, markAsRead, deleteConversation } = useConversations();
+  const [chatType, setChatType] = useState("private");
+  const { data: conversations, isLoading: loadingConvs, markAsRead, deleteConversation } = useConversations(undefined, chatType);
   const [selected, setSelected] = useState<ConversationItem | null>(null);
   const [showRightPanel, setShowRightPanel] = useState(true);
   const { data: messages, isLoading: loadingMsgs } = useMessages(selected?.id || null);
