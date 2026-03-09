@@ -177,7 +177,26 @@ export class BaileysManager {
 
       const chatType = getChatType(remoteJid);
       const isFromMe = msg.key.fromMe === true;
-      const identifier = remoteJid.replace(/@.*$/, "");
+      
+      // Resolve LID (@lid) to real phone number
+      let identifier: string;
+      const isLid = remoteJid.includes("@lid");
+      
+      if (chatType === "private" && isLid) {
+        // Try to get real number from participant or other sources
+        const participant = msg.key.participant;
+        if (participant && participant.includes("@s.whatsapp.net")) {
+          identifier = participant.replace(/@.*$/, "");
+          this.logger.info(`LID resolved via participant: ${remoteJid} -> ${identifier}`);
+        } else {
+          // Fallback: use the LID number but log warning
+          identifier = remoteJid.replace(/@.*$/, "");
+          this.logger.warn(`LID JID could not be resolved: ${remoteJid}, participant: ${participant || "none"}`);
+        }
+      } else {
+        identifier = remoteJid.replace(/@.*$/, "");
+      }
+      
       const pushName = msg.pushName || identifier;
 
       this.logger.info(`processMessage: jid=${remoteJid}, chatType=${chatType}, fromMe=${isFromMe}`);

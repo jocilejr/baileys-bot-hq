@@ -12,6 +12,10 @@ interface RightPanelProps {
 }
 
 function formatPhone(phone: string) {
+  // Detect LID identifiers (very long numbers or non-standard formats)
+  if (phone.length > 15 || !/^\d{10,15}$/.test(phone)) {
+    return phone;
+  }
   if (phone.length >= 12) {
     return `+${phone.slice(0, 2)} (${phone.slice(2, 4)}) ${phone.slice(4, 9)}-${phone.slice(9)}`;
   }
