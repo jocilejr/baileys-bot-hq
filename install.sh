@@ -1,5 +1,5 @@
 #!/bin/bash
-set -e
+set -euo pipefail
 
 echo "============================================"
 echo "  ZapManager — Instalação 100% Autônoma"
@@ -132,7 +132,7 @@ SERVICE_ROLE_KEY=$(node -e "
 
 echo "  ✅ Chaves geradas automaticamente"
 
-# Write the .env file with ALL required values for Supabase Docker
+# Write the .env file
 cat > .env <<ENVEOF
 ############
 # Secrets — auto-generated
@@ -238,63 +238,84 @@ POOLER_DB_POOL_SIZE=5
 DOCKER_SOCKET_LOCATION=/var/run/docker.sock
 ENVEOF
 
-# Fix analytics blocking issue: change service_healthy to service_started
-if [ -f "docker-compose.yml" ]; then
-  sed -i 's/condition: service_healthy/condition: service_started/g' docker-compose.yml
+# ── FIX 1: Patch roles.sql to hardcode password ──
+# Supabase's roles.sql uses \set pgpass which can fail silently.
+# We replace the variable references with the actual password value.
+echo "  🔧 Injetando senha nos roles de inicialização..."
+if [ -f "volumes/db/roles.sql" ]; then
+  # Remove the \set pgpass line and replace password references
+  sed -i "s|\\\\set pgpass.*|-- pgpass replaced by installer|g" volumes/db/roles.sql
+  sed -i "s|:'pgpass'|'${POSTGRES_PASSWORD}'|g" volumes/db/roles.sql
+  sed -i "s|:pgpass|'${POSTGRES_PASSWORD}'|g" volumes/db/roles.sql
+  echo "  ✅ roles.sql patcheado"
+else
+  echo "  ⚠️ volumes/db/roles.sql não encontrado, criando manualmente..."
+  mkdir -p volumes/db
+  cat > volumes/db/roles.sql <<'ROLESEOF'
+-- Roles created by ZapManager installer
+ROLESEOF
 fi
 
-# Clean start — remove old volumes to avoid password mismatch
-docker compose down -v 2>/dev/null || true
+# ── FIX 2: Fix analytics blocking issue ──
+if [ -f "docker-compose.yml" ]; then
+  sed -i 's/condition: service_healthy/condition: service_started/g' docker-compose.yml
+  echo "  ✅ docker-compose.yml patcheado (service_healthy → service_started)"
+fi
 
+# ── FIX 3: Clean ALL old data (volumes + bind mounts) ──
+echo "  🧹 Limpando dados antigos..."
+docker compose down -v 2>/dev/null || true
+rm -rf volumes/db/data 2>/dev/null || true
+echo "  ✅ Dados antigos removidos"
+
+# ── Boot Supabase ──
 echo "  🚀 Iniciando containers Supabase..."
 docker compose up -d
 
-# Wait for database to be ready
+# Wait for database
 echo "  ⏳ Aguardando banco de dados..."
-MAX_RETRIES=60
 RETRY=0
 until docker compose exec -T db pg_isready -U postgres > /dev/null 2>&1; do
   RETRY=$((RETRY+1))
-  if [ $RETRY -ge $MAX_RETRIES ]; then
-    echo "  ❌ Banco de dados não ficou pronto em ${MAX_RETRIES}s"
-    echo "  Verifique com: cd $SUPABASE_DIR/docker && docker compose logs db"
+  if [ $RETRY -ge 60 ]; then
+    echo "  ❌ Banco de dados não ficou pronto em 60s"
+    echo "  📋 Últimas 20 linhas do log:"
+    docker compose logs db --tail 20
     exit 1
   fi
   sleep 1
 done
 echo "  ✅ Banco de dados pronto"
 
-echo "  🔧 Configurando senhas dos roles internos..."
-docker compose exec -T db psql -U postgres -c "ALTER ROLE supabase_auth_admin WITH PASSWORD '${POSTGRES_PASSWORD}';"
-docker compose exec -T db psql -U postgres -c "ALTER ROLE supabase_storage_admin WITH PASSWORD '${POSTGRES_PASSWORD}';"
-echo "  ✅ Senhas configuradas"
-
-echo "  🔄 Reiniciando auth e storage..."
-docker compose restart auth storage
-sleep 5
-
-# Wait for auth service via Kong endpoint
+# ── FIX 4: Health check with apikey header ──
 echo "  ⏳ Aguardando serviço de autenticação..."
 RETRY=0
-until curl -sf http://localhost:8000/auth/v1/health > /dev/null 2>&1; do
+until curl -sf http://localhost:8000/auth/v1/health \
+  -H "apikey: $ANON_KEY" > /dev/null 2>&1; do
   RETRY=$((RETRY+1))
   if [ $RETRY -ge 90 ]; then
     echo "  ❌ Auth service não ficou pronto em 180s"
-    echo "  Verifique: cd $SUPABASE_DIR/docker && docker compose logs auth"
+    echo "  📋 Últimas 30 linhas do log auth:"
+    docker compose logs auth --tail 30
+    echo ""
+    echo "  📋 Últimas 10 linhas do log kong:"
+    docker compose logs kong --tail 10
     exit 1
   fi
   sleep 2
 done
 echo "  ✅ Auth service pronto"
 
-# Wait for REST service (PostgREST)
+# Wait for REST service
 echo "  ⏳ Aguardando API REST..."
 RETRY=0
-until curl -sf http://localhost:8000/rest/v1/ -H "apikey: $ANON_KEY" > /dev/null 2>&1; do
+until curl -sf http://localhost:8000/rest/v1/ \
+  -H "apikey: $ANON_KEY" > /dev/null 2>&1; do
   RETRY=$((RETRY+1))
   if [ $RETRY -ge 90 ]; then
     echo "  ❌ REST API não ficou pronta em 180s"
-    echo "  Verifique: cd $SUPABASE_DIR/docker && docker compose logs rest"
+    echo "  📋 Últimas 20 linhas do log rest:"
+    docker compose logs rest --tail 20
     exit 1
   fi
   sleep 2
