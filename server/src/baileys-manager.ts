@@ -85,7 +85,7 @@ export class BaileysManager {
       keepAliveIntervalMs: 30000,
       syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
-      shouldIgnoreJid: (jid: string) => jid === "status@broadcast" || jid.includes("@newsletter"),
+      shouldIgnoreJid: (jid: string | undefined | null) => !jid || jid === "status@broadcast" || jid.includes("@newsletter"),
       emitOwnEvents: true,
       fireInitQueries: true,
     });
