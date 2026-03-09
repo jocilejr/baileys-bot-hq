@@ -82,6 +82,7 @@ export class BaileysManager {
       generateHighQualityLinkPreview: true,
       browser: ["ZapManager", "Chrome", "120.0.0"],
       qrTimeout: 60000,
+      keepAliveIntervalMs: 30000,
       syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
       shouldIgnoreJid: (jid: string) => jid === "status@broadcast" || jid.includes("@newsletter"),
