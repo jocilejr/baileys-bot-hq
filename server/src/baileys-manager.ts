@@ -90,6 +90,39 @@ export class BaileysManager {
     const session: Session = { socket, instanceId, retryCount: 0 };
     this.sessions.set(instanceId, session);
 
+    // Initialize LID map for this instance
+    if (!this.lidMaps.has(instanceId)) {
+      this.lidMaps.set(instanceId, new Map());
+    }
+    const lidMap = this.lidMaps.get(instanceId)!;
+
+    // Listen for contacts to build LID → Phone mapping
+    socket.ev.on("contacts.set", ({ contacts: waContacts }) => {
+      let mapped = 0;
+      for (const c of waContacts) {
+        const cId = (c as any).id;
+        const cLid = (c as any).lid;
+        if (cId && cLid) {
+          const phone = cId.replace(/@.*$/, "");
+          const lid = cLid.replace(/@.*$/, "");
+          lidMap.set(lid, phone);
+          mapped++;
+        }
+      }
+      this.logger.info(`contacts.set for ${instanceId}: ${waContacts.length} contacts, ${mapped} LID mappings`);
+    });
+
+    socket.ev.on("contacts.update", (updates) => {
+      for (const c of updates) {
+        const cId = (c as any).id;
+        const cLid = (c as any).lid;
+        if (cId && cLid) {
+          const phone = cId.replace(/@.*$/, "");
+          const lid = cLid.replace(/@.*$/, "");
+          lidMap.set(lid, phone);
+        }
+      }
+    });
 
     socket.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
