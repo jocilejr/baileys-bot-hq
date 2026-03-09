@@ -387,7 +387,7 @@ export class BaileysManager {
 
     // Incoming messages (real-time)
     socket.ev.on("messages.upsert", async ({ messages, type }) => {
-      this.logger.info(`messages.upsert for ${instanceId}: ${messages.length} msgs, type: ${type}`);
+      this.logger.info(`>>> UPSERT EVENT for ${instanceId}: ${messages.length} msgs, type=${type}`);
       
       const isHistorySync = type !== "notify";
 
