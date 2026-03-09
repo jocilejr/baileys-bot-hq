@@ -217,15 +217,23 @@ export class BaileysManager {
       const isLid = remoteJid.includes("@lid");
       
       if (chatType === "private" && isLid) {
-        // Try to get real number from participant or other sources
-        const participant = msg.key.participant;
-        if (participant && participant.includes("@s.whatsapp.net")) {
-          identifier = participant.replace(/@.*$/, "");
-          this.logger.info(`LID resolved via participant: ${remoteJid} -> ${identifier}`);
+        const lidNumber = remoteJid.replace(/@.*$/, "");
+        const lidMap = this.lidMaps.get(instanceId);
+        const resolvedPhone = lidMap?.get(lidNumber);
+        
+        if (resolvedPhone) {
+          identifier = resolvedPhone;
+          this.logger.info(`LID resolved via map: ${lidNumber} -> ${identifier}`);
         } else {
-          // Fallback: use the LID number but log warning
-          identifier = remoteJid.replace(/@.*$/, "");
-          this.logger.warn(`LID JID could not be resolved: ${remoteJid}, participant: ${participant || "none"}`);
+          // Fallback: try participant
+          const participant = msg.key.participant;
+          if (participant && participant.includes("@s.whatsapp.net")) {
+            identifier = participant.replace(/@.*$/, "");
+            this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
+          } else {
+            identifier = lidNumber;
+            this.logger.warn(`LID unresolved: ${lidNumber} (map size: ${lidMap?.size || 0}, participant: ${participant || "none"})`);
+          }
         }
       } else {
         identifier = remoteJid.replace(/@.*$/, "");
