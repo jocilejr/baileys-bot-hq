@@ -53,7 +53,7 @@ export function QRCodeDisplay({ status, qrCode, phone, onRegenerate, isRegenerat
       <div className="flex flex-col items-center gap-5">
         <div className="relative bg-white p-3 rounded-2xl shadow-lg">
           <canvas ref={canvasRef} className="rounded-lg" />
-          <Badge className="absolute -top-2 -right-2 bg-emerald-500 text-white text-[10px] px-2">
+          <Badge className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-[10px] px-2">
             PRONTO
           </Badge>
         </div>
