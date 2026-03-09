@@ -85,7 +85,7 @@ export class BaileysManager {
       keepAliveIntervalMs: 30000,
       syncFullHistory: true,
       shouldSyncHistoryMessage: () => true,
-      shouldIgnoreJid: (jid: string) => jid === "status@broadcast" || jid.includes("@newsletter"),
+      shouldIgnoreJid: (jid: string | undefined | null) => !jid || jid === "status@broadcast" || jid.includes("@newsletter"),
       emitOwnEvents: true,
       fireInitQueries: true,
     });
@@ -245,10 +245,10 @@ export class BaileysManager {
       else if (unwrapped?.documentMessage) mediaType = "document";
       else if (unwrapped?.stickerMessage) mediaType = "sticker";
 
-      // Skip protocol/system messages with no content
+      // Skip protocol/system messages with no content (content may arrive later via messages.update)
       if (!content && !mediaType) {
         const msgKeys = Object.keys(msg.message || {}).join(", ");
-        this.logger.warn(`Discarding message ${msg.key.id}: no content/media. Raw keys: [${msgKeys}]`);
+        this.logger.debug(`Skipping message ${msg.key.id}: awaiting content via update. Raw keys: [${msgKeys}]`);
         return;
       }
 
@@ -396,6 +396,25 @@ export class BaileysManager {
         const rawKeys = Object.keys(msg.message || {}).join(",");
         this.logger.info(`MSG RAW: jid=${jid}, id=${msg.key.id}, fromMe=${msg.key.fromMe}, type=${type}, keys=${rawKeys}`);
         await processMessage(msg, isHistorySync);
+      }
+    });
+
+    // Capture decrypted content that arrives after initial empty upsert
+    socket.ev.on("messages.update", async (updates) => {
+      for (const { key, update } of updates) {
+        if (!key.remoteJid || !(update as any).message) continue;
+
+        const updMsg = update as any;
+        this.logger.info(`MSG UPDATE: jid=${key.remoteJid}, id=${key.id}, hasMessage=${!!updMsg.message}, keys=${Object.keys(updMsg.message || {}).join(",")}`);
+
+        const fullMsg: proto.IWebMessageInfo = {
+          key,
+          message: updMsg.message,
+          messageTimestamp: updMsg.messageTimestamp || Math.floor(Date.now() / 1000),
+          pushName: updMsg.pushName || undefined,
+        };
+
+        await processMessage(fullMsg, false);
       }
     });
 
