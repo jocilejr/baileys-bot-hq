@@ -19,7 +19,7 @@ export function useConversations(status?: string, chatType?: string) {
       if (error) throw error;
       return data;
     },
-    refetchInterval: realtimeFailed.current ? 10000 : false,
+    refetchInterval: 10000,
   });
 
   useEffect(() => {
@@ -78,7 +78,7 @@ export function useMessages(conversationId: string | null) {
       if (error) throw error;
       return data;
     },
-    refetchInterval: realtimeFailed.current ? 5000 : false,
+    refetchInterval: 5000,
   });
 
   useEffect(() => {

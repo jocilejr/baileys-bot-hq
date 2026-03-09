@@ -421,6 +421,10 @@ export class BaileysManager {
     socket.ev.on("messaging-history.set", async ({ messages, contacts, isLatest }) => {
       // Build LID map from contacts delivered in history sync
       if (contacts) {
+        // Log first 3 contacts raw data for LID debugging
+        for (let i = 0; i < Math.min(3, contacts.length); i++) {
+          this.logger.info(`Contact sample ${i}: ${JSON.stringify(contacts[i])}`);
+        }
         let mapped = 0;
         for (const c of contacts) {
           const cId = (c as any).id;
