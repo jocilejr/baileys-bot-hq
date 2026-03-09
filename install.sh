@@ -508,7 +508,7 @@ echo "🚀 Iniciando backend com PM2..."
 cd $APP_DIR
 mkdir -p logs
 pm2 delete zapmanager-api 2>/dev/null || true
-pm2 start ecosystem.config.js
+pm2 start ecosystem.config.cjs
 pm2 save
 pm2 startup | tail -1 | bash || true
 
