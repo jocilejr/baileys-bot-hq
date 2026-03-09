@@ -1,42 +1,27 @@
 
 
-## Diagnóstico: Banco de dados separados
+## Problema
 
-O problema é que o **frontend** e o **servidor backend (Baileys)** estão conectados a **bancos de dados diferentes**:
+O Baileys atual só processa mensagens com `type === "notify"` (linha 165), que são mensagens **novas em tempo real**. Mensagens históricas chegam via o evento `messages.upsert` com `type === "append"` (sincronização inicial do WhatsApp) — mas estão sendo ignoradas pelo filtro.
 
-- **Frontend** (app.chatbotsimplificado.com): conecta ao Lovable Cloud (`lyslqcapgawzffivlgjh.supabase.co`)
-- **Servidor Baileys** (api.chatbotsimplificado.com): provavelmente conecta ao Supabase self-hosted na VPS (`supabase.app.chatbotsimplificado.com`)
-
-Quando o Baileys recebe mensagens do WhatsApp, ele grava no banco self-hosted. Mas o frontend lê do Lovable Cloud, que está vazio (0 conversas, 0 contatos, 0 instâncias).
+Além disso, mensagens enviadas por você (`msg.key.fromMe === true`) também são ignoradas (linha 168), então suas próprias mensagens históricas nunca são salvas.
 
 ## Solução
 
-Você precisa alinhar o servidor para usar o **mesmo banco** que o frontend. Na VPS, edite o arquivo `/root/baileys-bot-hq/server/.env` e configure:
+Modificar o `baileys-manager.ts` para:
 
-```bash
-SUPABASE_URL=https://lyslqcapgawzffivlgjh.supabase.co
-SUPABASE_SERVICE_ROLE_KEY=<sua_service_role_key_do_lovable_cloud>
-```
+1. **Aceitar mensagens históricas** — remover o filtro `if (type !== "notify") return` e processar também `type === "append"` (sync histórico)
+2. **Salvar mensagens enviadas** — remover `if (msg.key.fromMe) continue` e em vez disso marcar `direction: "outbound"` quando `fromMe === true`
+3. **Evitar duplicatas** — usar o `external_id` (msg.key.id) para fazer upsert, verificando se a mensagem já existe antes de inserir
+4. **Tratar timestamp histórico** — usar `msg.messageTimestamp` para definir o `created_at` correto das mensagens históricas, mantendo a ordem cronológica
 
-Depois reinicie o servidor:
-```bash
-pm2 restart zapmanager-api
-# ou systemctl restart zapmanager-api (dependendo de como está configurado)
-```
+### Alterações no arquivo `server/src/baileys-manager.ts`
 
-### Como obter a Service Role Key
+No handler `messages.upsert`:
+- Remover `if (type !== "notify") return`
+- Processar mensagens `fromMe` como `direction: "outbound"`
+- Antes de inserir, verificar se `external_id` já existe no banco
+- Usar `msg.messageTimestamp` convertido para ISO string como `created_at`
 
-A Service Role Key do Lovable Cloud pode ser encontrada acessando o backend do projeto.
-
-### Alternativa
-
-Se você prefere usar o Supabase self-hosted como banco principal, a solução é atualizar o `.env` do **frontend** (no build) para apontar para `supabase.app.chatbotsimplificado.com`. Porém, isso desconecta do Lovable Cloud.
-
-### Verificação
-
-Após alinhar, rode na VPS:
-```bash
-cat /root/baileys-bot-hq/server/.env
-```
-E confirme que `SUPABASE_URL` aponta para `lyslqcapgawzffivlgjh.supabase.co`. Depois envie uma mensagem de teste pelo WhatsApp e verifique se aparece no chat.
+Essas mudanças farão com que, ao conectar, o WhatsApp sincronize o histórico recente e todas essas mensagens sejam salvas no banco de dados e apareçam no chat.
 
