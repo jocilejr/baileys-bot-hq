@@ -92,25 +92,9 @@ export class BaileysManager {
     const session: Session = { socket, instanceId, retryCount: 0 };
     this.sessions.set(instanceId, session);
 
-    // Initialize LID map for this instance
-    if (!this.lidMaps.has(instanceId)) {
-      this.lidMaps.set(instanceId, new Map());
-    }
-    const lidMap = this.lidMaps.get(instanceId)!;
-
-    // Listen for contacts to build LID → Phone mapping
-    // contacts.set does not exist in Baileys v6 — LID mapping is done in messaging-history.set
-
+    // contacts.update — log for debugging only
     socket.ev.on("contacts.update", (updates) => {
-      for (const c of updates) {
-        const cId = (c as any).id;
-        const cLid = (c as any).lid;
-        if (cId && cLid) {
-          const phone = cId.replace(/@.*$/, "");
-          const lid = cLid.replace(/@.*$/, "");
-          lidMap.set(lid, phone);
-        }
-      }
+      this.logger.info(`contacts.update for ${instanceId}: ${updates.length} contacts`);
     });
 
     socket.ev.on("connection.update", async (update) => {
