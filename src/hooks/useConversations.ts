@@ -19,7 +19,7 @@ export function useConversations(status?: string, chatType?: string) {
       if (error) throw error;
       return data;
     },
-    refetchInterval: realtimeFailed.current ? 10000 : false,
+    refetchInterval: 10000,
   });
 
   useEffect(() => {
