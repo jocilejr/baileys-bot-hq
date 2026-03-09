@@ -6,10 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, MessageSquare, Globe, Wifi, WifiOff, Smartphone, Plus, RefreshCw, Trash2, QrCode, Loader2, Activity } from "lucide-react";
+import { Clock, MessageSquare, Globe, Smartphone, Plus, RefreshCw, Trash2, QrCode, Loader2, Activity } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useSettings, useUpdateSetting } from "@/hooks/useSettings";
-import { useInstances, useCreateInstance, useDeleteInstance, useReconnectInstance, useBackendHealth } from "@/hooks/useInstances";
+import { useInstances, useCreateInstance, useDeleteInstance, useReconnectInstance, useBackendHealth, useRealtimeInstances } from "@/hooks/useInstances";
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 
@@ -24,12 +24,16 @@ const Configuracoes = () => {
   const reconnectInstance = useReconnectInstance();
   const { data: health, isError: healthError } = useBackendHealth();
 
+  // Realtime subscription for instant QR updates
+  useRealtimeInstances();
+
   const [welcomeMsg, setWelcomeMsg] = useState("");
   const [awayMsg, setAwayMsg] = useState("");
   const [hoursStart, setHoursStart] = useState("08:00");
   const [hoursEnd, setHoursEnd] = useState("18:00");
   const [newInstanceName, setNewInstanceName] = useState("");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [qrDialogInstanceId, setQrDialogInstanceId] = useState<string | null>(null);
 
   useEffect(() => {
     if (settings) {
@@ -43,6 +47,25 @@ const Configuracoes = () => {
     }
   }, [settings]);
 
+  // Auto-open QR dialog when a pending instance gets a QR code
+  useEffect(() => {
+    if (!instances) return;
+    const pendingWithQr = instances.find(
+      (i) => (i.status === "qr_pending" || i.status === "connecting") && i.qr_code
+    );
+    if (pendingWithQr && !qrDialogInstanceId) {
+      setQrDialogInstanceId(pendingWithQr.id);
+    }
+    // Auto-close when connected
+    if (qrDialogInstanceId) {
+      const inst = instances.find((i) => i.id === qrDialogInstanceId);
+      if (inst?.status === "connected") {
+        setQrDialogInstanceId(null);
+        toast({ title: "WhatsApp conectado!" });
+      }
+    }
+  }, [instances, qrDialogInstanceId, toast]);
+
   const save = async (key: string, value: unknown) => {
     try {
       await updateSetting.mutateAsync({ key, value });
@@ -55,10 +78,14 @@ const Configuracoes = () => {
   const handleCreateInstance = async () => {
     if (!newInstanceName) return;
     try {
-      await createInstance.mutateAsync(newInstanceName);
-      toast({ title: "Instância criada" });
+      const result = await createInstance.mutateAsync(newInstanceName);
+      toast({ title: "Instância criada, aguardando QR..." });
       setDialogOpen(false);
       setNewInstanceName("");
+      // Auto-open QR dialog for the new instance
+      if (result?.id) {
+        setQrDialogInstanceId(result.id);
+      }
     } catch (e: any) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
     }
@@ -67,6 +94,25 @@ const Configuracoes = () => {
   if (isLoading) return <div className="p-6"><Skeleton className="h-96 w-full" /></div>;
 
   const backendOnline = !!health && !healthError;
+  const qrInstance = instances?.find((i) => i.id === qrDialogInstanceId);
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case "connected": return "bg-success";
+      case "qr_pending": return "bg-warning animate-pulse";
+      case "connecting": return "bg-warning animate-pulse";
+      default: return "bg-destructive";
+    }
+  };
+
+  const getStatusLabel = (status: string, phone: string | null) => {
+    switch (status) {
+      case "connected": return phone || "Conectado";
+      case "qr_pending": return "Aguardando leitura do QR";
+      case "connecting": return "Conectando...";
+      default: return "Desconectado";
+    }
+  };
 
   return (
     <div className="p-6 space-y-6">
@@ -74,6 +120,32 @@ const Configuracoes = () => {
         <h1 className="text-2xl font-bold text-foreground">Configurações</h1>
         <p className="text-sm text-muted-foreground">Configure seu sistema ZapManager</p>
       </div>
+
+      {/* QR Code Dialog - controlled */}
+      <Dialog open={!!qrDialogInstanceId} onOpenChange={(open) => !open && setQrDialogInstanceId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="text-center">
+              {qrInstance?.status === "connected" ? "Conectado!" : "Escaneie o QR Code"}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-col items-center gap-4 py-4">
+            {qrInstance?.qr_code ? (
+              <>
+                <img src={qrInstance.qr_code} alt="QR Code" className="w-72 h-72 rounded-lg" />
+                <p className="text-xs text-muted-foreground text-center">
+                  O QR Code atualiza automaticamente a cada ~20s
+                </p>
+              </>
+            ) : (
+              <div className="flex flex-col items-center gap-3 py-8">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">Gerando QR Code...</p>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Tabs defaultValue="baileys" className="space-y-4">
         <TabsList className="bg-secondary/50">
@@ -161,25 +233,22 @@ const Configuracoes = () => {
                     {instances.map((inst) => (
                       <div key={inst.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border">
                         <div className="flex items-center gap-3">
-                          <div className={`h-2.5 w-2.5 rounded-full ${inst.status === "connected" ? "bg-success" : inst.status === "qr_pending" ? "bg-warning" : "bg-destructive"}`} />
+                          <div className={`h-2.5 w-2.5 rounded-full ${getStatusColor(inst.status)}`} />
                           <div>
                             <p className="text-sm font-medium text-foreground">{inst.name}</p>
-                            <p className="text-xs text-muted-foreground">{inst.phone || inst.status}</p>
+                            <p className="text-xs text-muted-foreground">{getStatusLabel(inst.status, inst.phone)}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {inst.status === "qr_pending" && inst.qr_code && (
-                            <Dialog>
-                              <DialogTrigger asChild>
-                                <Button variant="outline" size="sm"><QrCode className="h-3 w-3" /></Button>
-                              </DialogTrigger>
-                              <DialogContent>
-                                <DialogHeader><DialogTitle>Escaneie o QR Code</DialogTitle></DialogHeader>
-                                <div className="flex justify-center p-4">
-                                  <img src={inst.qr_code} alt="QR Code" className="h-64 w-64" />
-                                </div>
-                              </DialogContent>
-                            </Dialog>
+                          {(inst.status === "qr_pending" || inst.status === "connecting") && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setQrDialogInstanceId(inst.id)}
+                            >
+                              <QrCode className="h-3 w-3 mr-1" />
+                              {inst.qr_code ? "Ver QR" : <Loader2 className="h-3 w-3 animate-spin" />}
+                            </Button>
                           )}
                           <Button
                             variant="outline"

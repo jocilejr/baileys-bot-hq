@@ -1,4 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { apiClient } from "@/lib/api";
 import type { Database } from "@/integrations/supabase/types";
@@ -13,7 +14,29 @@ export function useInstances() {
       if (error) throw error;
       return data as Instance[];
     },
+    refetchInterval: 3000,
   });
+}
+
+export function useRealtimeInstances() {
+  const qc = useQueryClient();
+
+  useEffect(() => {
+    const channel = supabase
+      .channel("instances-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "instances" },
+        () => {
+          qc.invalidateQueries({ queryKey: ["instances"] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [qc]);
 }
 
 export function useCreateInstance() {
