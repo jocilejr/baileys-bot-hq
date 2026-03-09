@@ -183,7 +183,10 @@ export class BaileysManager {
       this.logger.info(`processMessage: jid=${remoteJid}, chatType=${chatType}, fromMe=${isFromMe}`);
       const direction = isFromMe ? "outbound" : "inbound";
 
-      const content = msg.message?.conversation
+      // For groups, use participant's pushName as sender_name
+      const senderName = chatType === "group" 
+        ? (msg.key.participant ? (msg.pushName || msg.key.participant.replace(/@.*$/, "")) : null)
+        : (isFromMe ? null : pushName);
         || msg.message?.extendedTextMessage?.text
         || msg.message?.imageMessage?.caption
         || msg.message?.videoMessage?.caption
