@@ -399,6 +399,25 @@ export class BaileysManager {
       }
     });
 
+    // Capture decrypted content that arrives after initial empty upsert
+    socket.ev.on("messages.update", async (updates) => {
+      for (const { key, update } of updates) {
+        if (!key.remoteJid || !(update as any).message) continue;
+
+        const updMsg = update as any;
+        this.logger.info(`MSG UPDATE: jid=${key.remoteJid}, id=${key.id}, hasMessage=${!!updMsg.message}, keys=${Object.keys(updMsg.message || {}).join(",")}`);
+
+        const fullMsg: proto.IWebMessageInfo = {
+          key,
+          message: updMsg.message,
+          messageTimestamp: updMsg.messageTimestamp || Math.floor(Date.now() / 1000),
+          pushName: updMsg.pushName || undefined,
+        };
+
+        await processMessage(fullMsg, false);
+      }
+    });
+
     // Historical messages sync — non-blocking batch processing
     socket.ev.on("messaging-history.set", async ({ messages, contacts, isLatest }) => {
       if (contacts) {
