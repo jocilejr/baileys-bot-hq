@@ -36,8 +36,8 @@ export function QRCodeDisplay({ status, qrCode, phone, onRegenerate, isRegenerat
   if (status === "connected") {
     return (
       <div className="flex flex-col items-center gap-4 py-10">
-        <div className="h-20 w-20 rounded-full bg-emerald-500/10 flex items-center justify-center">
-          <CheckCircle2 className="h-10 w-10 text-emerald-500" />
+        <div className="h-20 w-20 rounded-full bg-primary/10 flex items-center justify-center">
+          <CheckCircle2 className="h-10 w-10 text-primary" />
         </div>
         <div className="text-center space-y-1">
           <p className="text-lg font-semibold text-foreground">Conectado!</p>
