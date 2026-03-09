@@ -85,21 +85,22 @@ export class BaileysManager {
     const session: Session = { socket, instanceId, retryCount: 0 };
     this.sessions.set(instanceId, session);
 
-    // Connection updates
+
     socket.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        const qrDataUrl = await QRCode.toDataURL(qr, { width: 512, margin: 2, errorCorrectionLevel: 'M' });
+        const qrDataUrl = await QRCode.toDataURL(qr, { width: 400, margin: 2, errorCorrectionLevel: 'M' });
         await this.supabase
           .from("instances")
           .update({ qr_code: qrDataUrl, status: "qr_pending" })
           .eq("id", instanceId);
-        this.logger.info(`QR generated for ${instanceId}`);
+        this.logger.info(`QR generated for ${instanceId} (size: ${qrDataUrl.length} bytes)`);
       }
 
       if (connection === "open") {
         session.retryCount = 0;
+        this.startingInstances.delete(instanceId); // Liberar mutex
         const phone = socket.user?.id?.split(":")[0] || null;
         await this.supabase
           .from("instances")
@@ -109,6 +110,15 @@ export class BaileysManager {
       }
 
       if (connection === "close") {
+        this.startingInstances.delete(instanceId); // Liberar mutex
+        
+        // Se foi parada intencional, não reconectar
+        if (this.intentionalStops.has(instanceId)) {
+          this.logger.info(`Instance ${instanceId} closed intentionally, no reconnect`);
+          this.intentionalStops.delete(instanceId);
+          return;
+        }
+
         const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
         const loggedOut = statusCode === DisconnectReason.loggedOut;
 
@@ -131,7 +141,12 @@ export class BaileysManager {
           session.retryCount++;
           const delay = Math.min(session.retryCount * 2000, 30000);
           this.logger.info(`Reconnecting ${instanceId} in ${delay}ms (attempt ${session.retryCount})`);
-          setTimeout(() => this.startSession(instanceId), delay);
+          
+          const timer = setTimeout(() => {
+            this.reconnectTimers.delete(instanceId);
+            this.startSession(instanceId);
+          }, delay);
+          this.reconnectTimers.set(instanceId, timer);
         }
       }
     });
