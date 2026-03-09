@@ -28,7 +28,6 @@ export class BaileysManager {
   private startingInstances = new Set<string>();
   private reconnectTimers = new Map<string, NodeJS.Timeout>();
   private intentionalStops = new Set<string>();
-  private lidMaps = new Map<string, Map<string, string>>(); // instanceId → (lidNumber → phoneNumber)
 
   constructor(supabase: SupabaseClient, logger: Logger) {
     this.supabase = supabase;
