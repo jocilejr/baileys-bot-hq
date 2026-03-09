@@ -188,6 +188,18 @@ export class BaileysManager {
       return jid.includes("@g.us") ? "group" : "private";
     };
 
+    // Helper: unwrap nested message wrappers (Baileys v6)
+    const unwrapMessage = (message: proto.IMessage | null | undefined): proto.IMessage | null => {
+      if (!message) return null;
+      if (message.ephemeralMessage?.message) return unwrapMessage(message.ephemeralMessage.message);
+      if (message.viewOnceMessage?.message) return unwrapMessage(message.viewOnceMessage.message);
+      if (message.viewOnceMessageV2?.message) return unwrapMessage(message.viewOnceMessageV2.message);
+      if (message.viewOnceMessageV2Extension?.message) return unwrapMessage(message.viewOnceMessageV2Extension.message);
+      if (message.documentWithCaptionMessage?.message) return unwrapMessage(message.documentWithCaptionMessage.message);
+      if (message.editedMessage?.message) return unwrapMessage(message.editedMessage.message);
+      return message;
+    };
+
     // Helper: process and save a single message
     const processMessage = async (msg: proto.IWebMessageInfo, isHistorySync: boolean) => {
       const remoteJid = msg.key.remoteJid;
@@ -236,21 +248,28 @@ export class BaileysManager {
         ? (msg.key.participant ? (msg.pushName || msg.key.participant.replace(/@.*$/, "")) : null)
         : (isFromMe ? null : pushName);
 
-      const content = msg.message?.conversation
-        || msg.message?.extendedTextMessage?.text
-        || msg.message?.imageMessage?.caption
-        || msg.message?.videoMessage?.caption
+      // Unwrap nested message wrappers
+      const unwrapped = unwrapMessage(msg.message);
+
+      const content = unwrapped?.conversation
+        || unwrapped?.extendedTextMessage?.text
+        || unwrapped?.imageMessage?.caption
+        || unwrapped?.videoMessage?.caption
         || "";
 
       let mediaType: string | null = null;
-      if (msg.message?.imageMessage) mediaType = "image";
-      else if (msg.message?.videoMessage) mediaType = "video";
-      else if (msg.message?.audioMessage) mediaType = "audio";
-      else if (msg.message?.documentMessage) mediaType = "document";
-      else if (msg.message?.stickerMessage) mediaType = "sticker";
+      if (unwrapped?.imageMessage) mediaType = "image";
+      else if (unwrapped?.videoMessage) mediaType = "video";
+      else if (unwrapped?.audioMessage) mediaType = "audio";
+      else if (unwrapped?.documentMessage) mediaType = "document";
+      else if (unwrapped?.stickerMessage) mediaType = "sticker";
 
       // Skip protocol/system messages with no content
-      if (!content && !mediaType) return;
+      if (!content && !mediaType) {
+        const msgKeys = Object.keys(msg.message || {}).join(", ");
+        this.logger.warn(`Discarding message ${msg.key.id}: no content/media. Raw keys: [${msgKeys}]`);
+        return;
+      }
 
       const externalId = msg.key.id || null;
 
