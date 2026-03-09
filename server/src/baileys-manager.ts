@@ -162,16 +162,23 @@ export class BaileysManager {
 
     // Incoming messages
     socket.ev.on("messages.upsert", async ({ messages, type }) => {
-      if (type !== "notify") return;
+      // Accept both "notify" (real-time) and "append" (history sync)
+      if (type !== "notify" && type !== "append") return;
+
+      const isHistorySync = type === "append";
 
       for (const msg of messages) {
-        if (msg.key.fromMe) continue;
-        
         const remoteJid = msg.key.remoteJid;
         if (!remoteJid || remoteJid === "status@broadcast") continue;
 
-        const phone = remoteJid.replace("@s.whatsapp.net", "").replace("@g.us", "");
+        // Skip group messages (optional — remove if you want group support)
+        if (remoteJid.endsWith("@g.us")) continue;
+
+        const isFromMe = msg.key.fromMe === true;
+        const phone = remoteJid.replace("@s.whatsapp.net", "");
         const pushName = msg.pushName || phone;
+        const direction = isFromMe ? "outbound" : "inbound";
+
         const content = msg.message?.conversation
           || msg.message?.extendedTextMessage?.text
           || msg.message?.imageMessage?.caption
@@ -185,7 +192,33 @@ export class BaileysManager {
         else if (msg.message?.documentMessage) mediaType = "document";
         else if (msg.message?.stickerMessage) mediaType = "sticker";
 
+        // Skip protocol/system messages with no content
+        if (!content && !mediaType) continue;
+
+        const externalId = msg.key.id || null;
+
+        // Convert messageTimestamp to ISO string for historical ordering
+        let createdAt: string | undefined;
+        if (msg.messageTimestamp) {
+          const ts = typeof msg.messageTimestamp === "number"
+            ? msg.messageTimestamp
+            : Number(msg.messageTimestamp);
+          if (ts > 0) {
+            createdAt = new Date(ts * 1000).toISOString();
+          }
+        }
+
         try {
+          // Skip duplicate messages by external_id
+          if (externalId) {
+            const { data: existing } = await this.supabase
+              .from("messages")
+              .select("id")
+              .eq("external_id", externalId)
+              .maybeSingle();
+            if (existing) continue;
+          }
+
           // Find or create contact
           let { data: contact } = await this.supabase
             .from("contacts")
@@ -228,31 +261,40 @@ export class BaileysManager {
 
           if (!conversation) continue;
 
-          // Insert message
-          await this.supabase.from("messages").insert({
+          // Insert message with correct timestamp
+          const messageData: any = {
             conversation_id: conversation.id,
             content: content || null,
-            direction: "inbound",
-            status: "delivered",
-            sender_name: pushName,
-            external_id: msg.key.id || null,
+            direction,
+            status: isFromMe ? "sent" : "delivered",
+            sender_name: isFromMe ? null : pushName,
+            external_id: externalId,
             media_type: mediaType,
-          });
+          };
+          if (createdAt) {
+            messageData.created_at = createdAt;
+          }
 
-          // Update conversation
-          await this.supabase
-            .from("conversations")
-            .update({
-              last_message_at: new Date().toISOString(),
-              last_message_preview: content?.substring(0, 100) || `[${mediaType || "mensagem"}]`,
-              unread_count: (await this.supabase
-                .from("conversations")
-                .select("unread_count")
-                .eq("id", conversation.id)
-                .single()
-              ).data?.unread_count + 1 || 1,
-            })
-            .eq("id", conversation.id);
+          await this.supabase.from("messages").insert(messageData);
+
+          // Update conversation preview (only for most recent messages, not history sync)
+          if (!isHistorySync) {
+            await this.supabase
+              .from("conversations")
+              .update({
+                last_message_at: new Date().toISOString(),
+                last_message_preview: content?.substring(0, 100) || `[${mediaType || "mensagem"}]`,
+                unread_count: isFromMe ? 0 : (
+                  (await this.supabase
+                    .from("conversations")
+                    .select("unread_count")
+                    .eq("id", conversation.id)
+                    .single()
+                  ).data?.unread_count + 1 || 1
+                ),
+              })
+              .eq("id", conversation.id);
+          }
 
         } catch (err) {
           this.logger.error(`Error processing message: ${err}`);
