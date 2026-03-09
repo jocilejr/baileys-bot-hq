@@ -25,6 +25,9 @@ export class BaileysManager {
   private sessions = new Map<string, Session>();
   private supabase: SupabaseClient;
   private logger: Logger;
+  private startingInstances = new Set<string>(); // Mutex para prevenir chamadas concorrentes
+  private reconnectTimers = new Map<string, NodeJS.Timeout>(); // Rastrear timers de reconexão
+  private intentionalStops = new Set<string>(); // Rastrear paradas intencionais
 
   constructor(supabase: SupabaseClient, logger: Logger) {
     this.supabase = supabase;
@@ -33,9 +36,33 @@ export class BaileysManager {
   }
 
   async startSession(instanceId: string): Promise<void> {
+    // Mutex: evitar chamadas concorrentes para a mesma instância
+    if (this.startingInstances.has(instanceId)) {
+      this.logger.info(`Session ${instanceId} already starting, ignoring duplicate call`);
+      return;
+    }
+    this.startingInstances.add(instanceId);
+
+    // Cancelar qualquer timer de reconexão pendente
+    const existingTimer = this.reconnectTimers.get(instanceId);
+    if (existingTimer) {
+      clearTimeout(existingTimer);
+      this.reconnectTimers.delete(instanceId);
+    }
+
+    // Limpar flag de parada intencional
+    this.intentionalStops.delete(instanceId);
+
     if (this.sessions.has(instanceId)) {
       this.logger.info(`Session ${instanceId} already active, stopping first...`);
-      await this.stopSession(instanceId);
+      // Marcar como intencional para não disparar reconexão automática
+      this.intentionalStops.add(instanceId);
+      const session = this.sessions.get(instanceId)!;
+      session.socket.end(undefined);
+      this.sessions.delete(instanceId);
+      // Aguardar socket fechar completamente
+      await new Promise(resolve => setTimeout(resolve, 500));
+      this.intentionalStops.delete(instanceId);
     }
 
     const sessionDir = join(SESSIONS_DIR, instanceId);
@@ -58,21 +85,22 @@ export class BaileysManager {
     const session: Session = { socket, instanceId, retryCount: 0 };
     this.sessions.set(instanceId, session);
 
-    // Connection updates
+
     socket.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
       if (qr) {
-        const qrDataUrl = await QRCode.toDataURL(qr, { width: 512, margin: 2, errorCorrectionLevel: 'M' });
+        const qrDataUrl = await QRCode.toDataURL(qr, { width: 400, margin: 2, errorCorrectionLevel: 'M' });
         await this.supabase
           .from("instances")
           .update({ qr_code: qrDataUrl, status: "qr_pending" })
           .eq("id", instanceId);
-        this.logger.info(`QR generated for ${instanceId}`);
+        this.logger.info(`QR generated for ${instanceId} (size: ${qrDataUrl.length} bytes)`);
       }
 
       if (connection === "open") {
         session.retryCount = 0;
+        this.startingInstances.delete(instanceId); // Liberar mutex
         const phone = socket.user?.id?.split(":")[0] || null;
         await this.supabase
           .from("instances")
@@ -82,6 +110,15 @@ export class BaileysManager {
       }
 
       if (connection === "close") {
+        this.startingInstances.delete(instanceId); // Liberar mutex
+        
+        // Se foi parada intencional, não reconectar
+        if (this.intentionalStops.has(instanceId)) {
+          this.logger.info(`Instance ${instanceId} closed intentionally, no reconnect`);
+          this.intentionalStops.delete(instanceId);
+          return;
+        }
+
         const statusCode = (lastDisconnect?.error as Boom)?.output?.statusCode;
         const loggedOut = statusCode === DisconnectReason.loggedOut;
 
@@ -104,7 +141,12 @@ export class BaileysManager {
           session.retryCount++;
           const delay = Math.min(session.retryCount * 2000, 30000);
           this.logger.info(`Reconnecting ${instanceId} in ${delay}ms (attempt ${session.retryCount})`);
-          setTimeout(() => this.startSession(instanceId), delay);
+          
+          const timer = setTimeout(() => {
+            this.reconnectTimers.delete(instanceId);
+            this.startSession(instanceId);
+          }, delay);
+          this.reconnectTimers.set(instanceId, timer);
         }
       }
     });
@@ -214,6 +256,15 @@ export class BaileysManager {
   }
 
   async stopSession(instanceId: string): Promise<void> {
+    this.intentionalStops.add(instanceId); // Marcar como parada intencional
+    
+    // Cancelar timer de reconexão pendente, se existir
+    const timer = this.reconnectTimers.get(instanceId);
+    if (timer) {
+      clearTimeout(timer);
+      this.reconnectTimers.delete(instanceId);
+    }
+
     const session = this.sessions.get(instanceId);
     if (session) {
       session.socket.end(undefined);
