@@ -5,7 +5,8 @@ import { createClient } from "@supabase/supabase-js";
 import { instancesRouter } from "./routes/instances.js";
 import { messagesRouter } from "./routes/messages.js";
 import { healthRouter } from "./routes/health.js";
-import { BaileysManager } from "./baileys-manager.js";
+import { BaileysManager, ParsedMessage } from "./baileys-manager.js";
+import { handleIncomingMessage } from "./message-handler.js";
 import pino from "pino";
 
 const logger = pino({ level: "info" });
@@ -26,6 +27,11 @@ export const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
 });
 
 export const baileysManager = new BaileysManager(supabaseAdmin, logger);
+
+// Wire Baileys events to persistence handler
+baileysManager.on("message.received", (data: ParsedMessage, isHistorySync: boolean) => {
+  handleIncomingMessage(supabaseAdmin, logger, data, isHistorySync);
+});
 
 // Middleware
 app.use(cors({ origin: process.env.CORS_ORIGIN?.split(",") || "*", credentials: true }));

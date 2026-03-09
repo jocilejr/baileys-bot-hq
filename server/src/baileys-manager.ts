@@ -1,3 +1,4 @@
+import { EventEmitter } from "events";
 import makeWASocket, {
   useMultiFileAuthState,
   DisconnectReason,
@@ -6,24 +7,36 @@ import makeWASocket, {
   WASocket,
   proto,
 } from "@whiskeysockets/baileys";
-import makeInMemoryStore from "@whiskeysockets/baileys/lib/Store/make-in-memory-store";
 import { Boom } from "@hapi/boom";
-import * as QRCode from "qrcode";
 import { SupabaseClient } from "@supabase/supabase-js";
 import { Logger } from "pino";
 import { mkdirSync, rmSync, existsSync } from "fs";
 import { join } from "path";
 
+export interface ParsedMessage {
+  instanceId: string;
+  remoteJid: string;
+  chatType: "private" | "group";
+  fromMe: boolean;
+  content: string;
+  mediaType: string | null;
+  senderName: string | null;
+  externalId: string | null;
+  timestamp: string;
+  pushName: string;
+  identifier: string;
+  isLid: boolean;
+}
+
 interface Session {
   socket: WASocket;
-  store: ReturnType<typeof makeInMemoryStore>;
   instanceId: string;
   retryCount: number;
 }
 
 const SESSIONS_DIR = join(process.cwd(), "sessions");
 
-export class BaileysManager {
+export class BaileysManager extends EventEmitter {
   private sessions = new Map<string, Session>();
   private supabase: SupabaseClient;
   private logger: Logger;
@@ -32,31 +45,114 @@ export class BaileysManager {
   private intentionalStops = new Set<string>();
 
   constructor(supabase: SupabaseClient, logger: Logger) {
+    super();
     this.supabase = supabase;
     this.logger = logger;
     mkdirSync(SESSIONS_DIR, { recursive: true });
   }
 
+  // --- Helpers for parsing messages ---
+
+  private getChatType(jid: string): "private" | "group" {
+    return jid.includes("@g.us") ? "group" : "private";
+  }
+
+  private unwrapMessage(message: proto.IMessage | null | undefined): proto.IMessage | null {
+    if (!message) return null;
+    if (message.ephemeralMessage?.message) return this.unwrapMessage(message.ephemeralMessage.message);
+    if (message.viewOnceMessage?.message) return this.unwrapMessage(message.viewOnceMessage.message);
+    if (message.viewOnceMessageV2?.message) return this.unwrapMessage(message.viewOnceMessageV2.message);
+    if (message.viewOnceMessageV2Extension?.message) return this.unwrapMessage(message.viewOnceMessageV2Extension.message);
+    if (message.documentWithCaptionMessage?.message) return this.unwrapMessage(message.documentWithCaptionMessage.message);
+    if (message.editedMessage?.message) return this.unwrapMessage(message.editedMessage.message);
+    return message;
+  }
+
+  private parseMessage(msg: proto.IWebMessageInfo, instanceId: string): ParsedMessage | null {
+    const remoteJid = msg.key.remoteJid;
+    if (!remoteJid || remoteJid === "status@broadcast") return null;
+    if (remoteJid.includes("@newsletter")) return null;
+
+    const chatType = this.getChatType(remoteJid);
+    const isFromMe = msg.key.fromMe === true;
+
+    let identifier: string = remoteJid.replace(/@.*$/, "");
+    const isLid = remoteJid.includes("@lid");
+
+    if (chatType === "private" && isLid) {
+      const participant = msg.key.participant;
+      if (participant && participant.includes("@s.whatsapp.net")) {
+        identifier = participant.replace(/@.*$/, "");
+      }
+    }
+
+    const pushName = msg.pushName || identifier;
+
+    const senderName = chatType === "group"
+      ? (msg.key.participant ? (msg.pushName || msg.key.participant.replace(/@.*$/, "")) : null)
+      : (isFromMe ? null : pushName);
+
+    const unwrapped = this.unwrapMessage(msg.message);
+
+    const content = unwrapped?.conversation
+      || unwrapped?.extendedTextMessage?.text
+      || unwrapped?.imageMessage?.caption
+      || unwrapped?.videoMessage?.caption
+      || "";
+
+    let mediaType: string | null = null;
+    if (unwrapped?.imageMessage) mediaType = "image";
+    else if (unwrapped?.videoMessage) mediaType = "video";
+    else if (unwrapped?.audioMessage) mediaType = "audio";
+    else if (unwrapped?.documentMessage) mediaType = "document";
+    else if (unwrapped?.stickerMessage) mediaType = "sticker";
+
+    if (!content && !mediaType) return null;
+
+    let timestamp: string;
+    if (msg.messageTimestamp) {
+      const ts = typeof msg.messageTimestamp === "number"
+        ? msg.messageTimestamp
+        : Number(msg.messageTimestamp);
+      timestamp = ts > 0 ? new Date(ts * 1000).toISOString() : new Date().toISOString();
+    } else {
+      timestamp = new Date().toISOString();
+    }
+
+    return {
+      instanceId,
+      remoteJid,
+      chatType,
+      fromMe: isFromMe,
+      content,
+      mediaType,
+      senderName,
+      externalId: msg.key.id || null,
+      timestamp,
+      pushName,
+      identifier,
+      isLid,
+    };
+  }
+
+  // --- Session management ---
+
   async startSession(instanceId: string): Promise<void> {
-    // Mutex: evitar chamadas concorrentes para a mesma instância
     if (this.startingInstances.has(instanceId)) {
-      this.logger.info(`Session ${instanceId} already starting, ignoring duplicate call`);
+      this.logger.info(`Session ${instanceId} already starting, ignoring`);
       return;
     }
     this.startingInstances.add(instanceId);
 
-    // Cancelar qualquer timer de reconexão pendente
     const existingTimer = this.reconnectTimers.get(instanceId);
     if (existingTimer) {
       clearTimeout(existingTimer);
       this.reconnectTimers.delete(instanceId);
     }
 
-    // Limpar flag de parada intencional
     this.intentionalStops.delete(instanceId);
 
     if (this.sessions.has(instanceId)) {
-      this.logger.info(`Session ${instanceId} already active, stopping first...`);
       this.intentionalStops.add(instanceId);
       const session = this.sessions.get(instanceId)!;
       session.socket.end(undefined);
@@ -70,9 +166,6 @@ export class BaileysManager {
 
     const { state, saveCreds } = await useMultiFileAuthState(sessionDir);
     const { version } = await fetchLatestBaileysVersion();
-
-    // In-memory store per session — required for getMessage callback (retry decryption)
-    const store = makeInMemoryStore({ logger: this.logger.child({ store: instanceId }) as any });
 
     const socket = makeWASocket({
       version,
@@ -94,26 +187,13 @@ export class BaileysManager {
       maxMsgRetryCount: 3,
       defaultQueryTimeoutMs: 60_000,
       transactionOpts: { maxCommitRetries: 5, delayBetweenTriesMs: 1500 },
-      getMessage: async (key) => {
-        if (store) {
-          const msg = await store.loadMessage(key.remoteJid!, key.id!);
-          return msg?.message || undefined;
-        }
-        return proto.Message.fromObject({});
-      },
+      getMessage: async () => proto.Message.fromObject({}),
     });
 
-    // Bind store to socket events — MUST be called before any other ev handlers
-    store.bind(socket.ev);
-
-    const session: Session = { socket, store, instanceId, retryCount: 0 };
+    const session: Session = { socket, instanceId, retryCount: 0 };
     this.sessions.set(instanceId, session);
 
-    // contacts.update — log for debugging only
-    socket.ev.on("contacts.update", (updates) => {
-      this.logger.info(`contacts.update for ${instanceId}: ${updates.length} contacts`);
-    });
-
+    // Connection management
     socket.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
 
@@ -123,7 +203,7 @@ export class BaileysManager {
             .from("instances")
             .update({ qr_code: qr, status: "qr_pending" })
             .eq("id", instanceId);
-          this.logger.info(`QR raw string saved for ${instanceId} (length: ${qr.length})`);
+          this.logger.info(`QR saved for ${instanceId}`);
         } catch (qrErr) {
           this.logger.error(`Failed to save QR for ${instanceId}: ${qrErr}`);
         }
@@ -142,9 +222,9 @@ export class BaileysManager {
 
       if (connection === "close") {
         this.startingInstances.delete(instanceId);
-        
+
         if (this.intentionalStops.has(instanceId)) {
-          this.logger.info(`Instance ${instanceId} closed intentionally, no reconnect`);
+          this.logger.info(`Instance ${instanceId} closed intentionally`);
           this.intentionalStops.delete(instanceId);
           return;
         }
@@ -169,7 +249,7 @@ export class BaileysManager {
           session.retryCount++;
           const delay = Math.min(session.retryCount * 2000, 30000);
           this.logger.info(`Reconnecting ${instanceId} in ${delay}ms (attempt ${session.retryCount})`);
-          
+
           const timer = setTimeout(() => {
             this.reconnectTimers.delete(instanceId);
             this.startSession(instanceId);
@@ -179,236 +259,25 @@ export class BaileysManager {
       }
     });
 
-    // Save credentials
     socket.ev.on("creds.update", saveCreds);
 
-    // Helper: determine chat type from JID
-    const getChatType = (jid: string): "private" | "group" => {
-      return jid.includes("@g.us") ? "group" : "private";
-    };
-
-    // Helper: unwrap nested message wrappers (Baileys v6)
-    const unwrapMessage = (message: proto.IMessage | null | undefined): proto.IMessage | null => {
-      if (!message) return null;
-      if (message.ephemeralMessage?.message) return unwrapMessage(message.ephemeralMessage.message);
-      if (message.viewOnceMessage?.message) return unwrapMessage(message.viewOnceMessage.message);
-      if (message.viewOnceMessageV2?.message) return unwrapMessage(message.viewOnceMessageV2.message);
-      if (message.viewOnceMessageV2Extension?.message) return unwrapMessage(message.viewOnceMessageV2Extension.message);
-      if (message.documentWithCaptionMessage?.message) return unwrapMessage(message.documentWithCaptionMessage.message);
-      if (message.editedMessage?.message) return unwrapMessage(message.editedMessage.message);
-      return message;
-    };
-
-    // Helper: process and save a single message
-    const processMessage = async (msg: proto.IWebMessageInfo, isHistorySync: boolean) => {
-      const remoteJid = msg.key.remoteJid;
-      if (!remoteJid || remoteJid === "status@broadcast") return;
-      if (remoteJid.includes("@newsletter")) return;
-
-      const chatType = getChatType(remoteJid);
-      const isFromMe = msg.key.fromMe === true;
-      
-      // Resolve LID (@lid) to real phone number
-      let identifier: string = remoteJid.replace(/@.*$/, "");
-      const isLid = remoteJid.includes("@lid");
-      
-      if (chatType === "private" && isLid) {
-        const lidNumber = identifier;
-        const participant = msg.key.participant;
-        if (participant && participant.includes("@s.whatsapp.net")) {
-          identifier = participant.replace(/@.*$/, "");
-          this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
-        } else if (msg.pushName && msg.pushName !== lidNumber) {
-          this.logger.info(`LID unresolved, using pushName "${msg.pushName}" for matching: ${lidNumber}`);
-        } else {
-          this.logger.warn(`LID unresolved, storing raw: ${lidNumber}`);
-        }
-      }
-      
-      const pushName = msg.pushName || identifier;
-
-      this.logger.info(`processMessage: jid=${remoteJid}, chatType=${chatType}, fromMe=${isFromMe}`);
-      const direction = isFromMe ? "outbound" : "inbound";
-
-      const senderName = chatType === "group" 
-        ? (msg.key.participant ? (msg.pushName || msg.key.participant.replace(/@.*$/, "")) : null)
-        : (isFromMe ? null : pushName);
-
-      // Unwrap nested message wrappers
-      const unwrapped = unwrapMessage(msg.message);
-
-      const content = unwrapped?.conversation
-        || unwrapped?.extendedTextMessage?.text
-        || unwrapped?.imageMessage?.caption
-        || unwrapped?.videoMessage?.caption
-        || "";
-
-      let mediaType: string | null = null;
-      if (unwrapped?.imageMessage) mediaType = "image";
-      else if (unwrapped?.videoMessage) mediaType = "video";
-      else if (unwrapped?.audioMessage) mediaType = "audio";
-      else if (unwrapped?.documentMessage) mediaType = "document";
-      else if (unwrapped?.stickerMessage) mediaType = "sticker";
-
-      // Skip protocol/system messages with no content
-      if (!content && !mediaType) {
-        const msgKeys = Object.keys(msg.message || {}).join(", ");
-        this.logger.debug(`Skipping message ${msg.key.id}: no content/media. Raw keys: [${msgKeys}]`);
-        return;
-      }
-
-      const externalId = msg.key.id || null;
-
-      // Convert messageTimestamp to ISO string
-      let createdAt: string | undefined;
-      if (msg.messageTimestamp) {
-        const ts = typeof msg.messageTimestamp === "number"
-          ? msg.messageTimestamp
-          : Number(msg.messageTimestamp);
-        if (ts > 0) {
-          createdAt = new Date(ts * 1000).toISOString();
-        }
-      }
-
-      try {
-        // Skip duplicate messages by external_id
-        if (externalId) {
-          const { data: existing, error: dupErr } = await this.supabase
-            .from("messages")
-            .select("id")
-            .eq("external_id", externalId)
-            .maybeSingle();
-          if (dupErr) this.logger.error(`Supabase dup check error: ${JSON.stringify(dupErr)}`);
-          if (existing) return;
-        }
-
-        // Find or create contact
-        let { data: contact, error: contactErr } = await this.supabase
-          .from("contacts")
-          .select("id")
-          .eq("phone", identifier)
-          .eq("instance_id", instanceId)
-          .single();
-        if (contactErr && contactErr.code !== "PGRST116") {
-          this.logger.error(`Supabase contact select error: ${JSON.stringify(contactErr)}`);
-        }
-
-        // If not found and identifier looks like a LID, try finding by pushName
-        if (!contact && isLid && pushName && pushName !== identifier) {
-          const { data: nameContact, error: nameErr } = await this.supabase
-            .from("contacts")
-            .select("id")
-            .eq("name", pushName)
-            .eq("instance_id", instanceId)
-            .limit(1)
-            .maybeSingle();
-          if (nameErr) this.logger.error(`Supabase contact name lookup error: ${JSON.stringify(nameErr)}`);
-          if (nameContact) {
-            contact = nameContact;
-            this.logger.info(`LID contact matched by name: "${pushName}" -> ${nameContact.id}`);
-          }
-        }
-
-        if (!contact) {
-          const { data: newContact, error: insertContactErr } = await this.supabase
-            .from("contacts")
-            .insert({ phone: identifier, name: pushName, instance_id: instanceId })
-            .select("id")
-            .single();
-          if (insertContactErr) this.logger.error(`Supabase contact insert error: ${JSON.stringify(insertContactErr)}`);
-          contact = newContact;
-        }
-
-        if (!contact) return;
-
-        // Find or create conversation
-        let { data: conversation, error: convErr } = await this.supabase
-          .from("conversations")
-          .select("id")
-          .eq("contact_id", contact.id)
-          .eq("instance_id", instanceId)
-          .eq("chat_type", chatType)
-          .single();
-        if (convErr && convErr.code !== "PGRST116") {
-          this.logger.error(`Supabase conversation select error: ${JSON.stringify(convErr)}`);
-        }
-
-        if (!conversation) {
-          const { data: newConv, error: insertConvErr } = await this.supabase
-            .from("conversations")
-            .insert({
-              contact_id: contact.id,
-              instance_id: instanceId,
-              status: "open",
-              chat_type: chatType,
-            })
-            .select("id")
-            .single();
-          if (insertConvErr) this.logger.error(`Supabase conversation insert error: ${JSON.stringify(insertConvErr)}`);
-          conversation = newConv;
-        }
-
-        if (!conversation) return;
-
-        // Insert message
-        const messageData: any = {
-          conversation_id: conversation.id,
-          content: content || null,
-          direction,
-          status: isFromMe ? "sent" : "delivered",
-          sender_name: senderName,
-          external_id: externalId,
-          media_type: mediaType,
-          created_at: createdAt || new Date().toISOString(),
-        };
-
-        const { error: msgInsertErr } = await this.supabase.from("messages").insert(messageData);
-        if (msgInsertErr) this.logger.error(`Supabase message insert error: ${JSON.stringify(msgInsertErr)}`);
-
-        // Update conversation preview
-        if (!isHistorySync) {
-          const { error: updateErr } = await this.supabase
-            .from("conversations")
-            .update({
-              last_message_at: new Date().toISOString(),
-              last_message_preview: content?.substring(0, 100) || `[${mediaType || "mensagem"}]`,
-              unread_count: isFromMe ? 0 : (
-                (await this.supabase
-                  .from("conversations")
-                  .select("unread_count")
-                  .eq("id", conversation.id)
-                  .single()
-                ).data?.unread_count + 1 || 1
-              ),
-            })
-            .eq("id", conversation.id);
-          if (updateErr) this.logger.error(`Supabase conversation update error: ${JSON.stringify(updateErr)}`);
-        }
-      } catch (err) {
-        this.logger.error(`Error processing message: ${err}`);
-      }
-    };
-
-    // Incoming messages (real-time + append)
+    // Messages: parse and emit — NO persistence here
     socket.ev.on("messages.upsert", async ({ messages, type }) => {
-      this.logger.info(`>>> UPSERT EVENT for ${instanceId}: ${messages.length} msgs, type=${type}`);
+      this.logger.info(`messages.upsert for ${instanceId}: ${messages.length} msgs, type=${type}`);
 
       for (const msg of messages) {
-        const jid = msg.key.remoteJid || "";
-        const rawKeys = Object.keys(msg.message || {}).join(",");
-        this.logger.info(`MSG RAW: jid=${jid}, id=${msg.key.id}, fromMe=${msg.key.fromMe}, type=${type}, keys=${rawKeys}`);
-        await processMessage(msg, type !== "notify");
+        const parsed = this.parseMessage(msg, instanceId);
+        if (parsed) {
+          this.emit("message.received", parsed, type !== "notify");
+        }
       }
     });
 
-    // Capture decrypted content that arrives after initial empty upsert (retry decryption)
     socket.ev.on("messages.update", async (updates) => {
       for (const { key, update } of updates) {
         if (!key.remoteJid || !(update as any).message) continue;
 
         const updMsg = update as any;
-        this.logger.info(`MSG UPDATE (retry decrypt): jid=${key.remoteJid}, id=${key.id}, keys=${Object.keys(updMsg.message || {}).join(",")}`);
-
         const fullMsg: proto.IWebMessageInfo = {
           key,
           message: updMsg.message,
@@ -416,14 +285,17 @@ export class BaileysManager {
           pushName: updMsg.pushName || undefined,
         };
 
-        await processMessage(fullMsg, false);
+        const parsed = this.parseMessage(fullMsg, instanceId);
+        if (parsed) {
+          this.emit("message.received", parsed, false);
+        }
       }
     });
   }
 
   async stopSession(instanceId: string): Promise<void> {
     this.intentionalStops.add(instanceId);
-    
+
     const timer = this.reconnectTimers.get(instanceId);
     if (timer) {
       clearTimeout(timer);
