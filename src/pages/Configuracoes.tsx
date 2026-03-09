@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Clock, MessageSquare, Globe, Smartphone, Plus, RefreshCw, Trash2, QrCode, Loader2, Activity } from "lucide-react";
+import { Clock, MessageSquare, Globe, Smartphone, Plus, RefreshCw, Trash2, QrCode, Loader2, Activity, CheckCircle2, Wifi, WifiOff } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { useSettings, useUpdateSetting } from "@/hooks/useSettings";
 import { useInstances, useCreateInstance, useDeleteInstance, useReconnectInstance, useBackendHealth, useRealtimeInstances } from "@/hooks/useInstances";
@@ -24,7 +24,6 @@ const Configuracoes = () => {
   const reconnectInstance = useReconnectInstance();
   const { data: health, isError: healthError } = useBackendHealth();
 
-  // Realtime subscription for instant QR updates
   useRealtimeInstances();
 
   const [welcomeMsg, setWelcomeMsg] = useState("");
@@ -47,22 +46,15 @@ const Configuracoes = () => {
     }
   }, [settings]);
 
-  // Auto-open QR dialog when a pending instance gets a QR code
+  // Auto-close QR dialog when connected
   useEffect(() => {
-    if (!instances) return;
-    const pendingWithQr = instances.find(
-      (i) => (i.status === "qr_pending" || i.status === "connecting") && i.qr_code
-    );
-    if (pendingWithQr && !qrDialogInstanceId) {
-      setQrDialogInstanceId(pendingWithQr.id);
-    }
-    // Auto-close when connected
-    if (qrDialogInstanceId) {
-      const inst = instances.find((i) => i.id === qrDialogInstanceId);
-      if (inst?.status === "connected") {
+    if (!qrDialogInstanceId || !instances) return;
+    const inst = instances.find((i) => i.id === qrDialogInstanceId);
+    if (inst?.status === "connected") {
+      setTimeout(() => {
         setQrDialogInstanceId(null);
-        toast({ title: "WhatsApp conectado!" });
-      }
+        toast({ title: "✅ WhatsApp conectado com sucesso!" });
+      }, 1500);
     }
   }, [instances, qrDialogInstanceId, toast]);
 
@@ -79,15 +71,24 @@ const Configuracoes = () => {
     if (!newInstanceName) return;
     try {
       const result = await createInstance.mutateAsync(newInstanceName);
-      toast({ title: "Instância criada, aguardando QR..." });
       setDialogOpen(false);
       setNewInstanceName("");
-      // Auto-open QR dialog for the new instance
       if (result?.id) {
         setQrDialogInstanceId(result.id);
+        toast({ title: "Instância criada! Aguarde o QR Code..." });
       }
     } catch (e: any) {
       toast({ title: "Erro", description: e.message, variant: "destructive" });
+    }
+  };
+
+  const handleConnect = async (instanceId: string) => {
+    try {
+      setQrDialogInstanceId(instanceId);
+      await reconnectInstance.mutateAsync(instanceId);
+    } catch (e: any) {
+      toast({ title: "Erro ao conectar", description: e.message, variant: "destructive" });
+      setQrDialogInstanceId(null);
     }
   };
 
@@ -114,6 +115,68 @@ const Configuracoes = () => {
     }
   };
 
+  const isConnecting = (status: string) => status === "qr_pending" || status === "connecting";
+
+  // QR dialog content: 3 states
+  const renderQrContent = () => {
+    if (!qrInstance) return (
+      <div className="flex flex-col items-center gap-3 py-10">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Iniciando conexão...</p>
+      </div>
+    );
+
+    if (qrInstance.status === "connected") return (
+      <div className="flex flex-col items-center gap-4 py-10">
+        <CheckCircle2 className="h-16 w-16 text-success" />
+        <p className="text-lg font-semibold text-foreground">Conectado!</p>
+        <p className="text-sm text-muted-foreground">{qrInstance.phone || "WhatsApp vinculado com sucesso"}</p>
+      </div>
+    );
+
+    if (qrInstance.qr_code) return (
+      <div className="flex flex-col items-center gap-4">
+        <div className="relative">
+          <img src={qrInstance.qr_code} alt="QR Code" className="w-64 h-64 rounded-xl border border-border" />
+          <Badge variant="secondary" className="absolute -top-2 -right-2 text-xs">
+            Pronto
+          </Badge>
+        </div>
+        <div className="text-center space-y-1">
+          <p className="text-sm font-medium text-foreground">Escaneie com o WhatsApp</p>
+          <p className="text-xs text-muted-foreground">
+            Abra o WhatsApp → Menu → Aparelhos conectados → Conectar aparelho
+          </p>
+          <p className="text-xs text-muted-foreground opacity-60">O QR atualiza automaticamente a cada ~20s</p>
+        </div>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => reconnectInstance.mutate(qrInstance.id)}
+          disabled={reconnectInstance.isPending}
+          className="w-full"
+        >
+          {reconnectInstance.isPending
+            ? <><Loader2 className="h-3 w-3 animate-spin mr-2" />Atualizando QR...</>
+            : <><RefreshCw className="h-3 w-3 mr-2" />Gerar novo QR</>}
+        </Button>
+      </div>
+    );
+
+    // Generating state (no QR yet)
+    return (
+      <div className="flex flex-col items-center gap-4 py-6">
+        <div className="relative w-64 h-64 rounded-xl border-2 border-dashed border-border flex items-center justify-center bg-secondary/20">
+          <div className="flex flex-col items-center gap-3">
+            <Loader2 className="h-10 w-10 animate-spin text-primary" />
+            <p className="text-sm font-medium text-foreground">Gerando QR Code...</p>
+            <p className="text-xs text-muted-foreground text-center px-4">Aguarde enquanto conectamos ao WhatsApp</p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="p-6 space-y-6">
       <div>
@@ -121,28 +184,17 @@ const Configuracoes = () => {
         <p className="text-sm text-muted-foreground">Configure seu sistema ZapManager</p>
       </div>
 
-      {/* QR Code Dialog - controlled */}
+      {/* QR Code Dialog */}
       <Dialog open={!!qrDialogInstanceId} onOpenChange={(open) => !open && setQrDialogInstanceId(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle className="text-center">
-              {qrInstance?.status === "connected" ? "Conectado!" : "Escaneie o QR Code"}
+            <DialogTitle className="text-center flex items-center justify-center gap-2">
+              <QrCode className="h-4 w-4 text-primary" />
+              {qrInstance?.status === "connected" ? "Conectado!" : "Conectar WhatsApp"}
             </DialogTitle>
           </DialogHeader>
-          <div className="flex flex-col items-center gap-4 py-4">
-            {qrInstance?.qr_code ? (
-              <>
-                <img src={qrInstance.qr_code} alt="QR Code" className="w-72 h-72 rounded-lg" />
-                <p className="text-xs text-muted-foreground text-center">
-                  O QR Code atualiza automaticamente a cada ~20s
-                </p>
-              </>
-            ) : (
-              <div className="flex flex-col items-center gap-3 py-8">
-                <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <p className="text-sm text-muted-foreground">Gerando QR Code...</p>
-              </div>
-            )}
+          <div className="py-2">
+            {renderQrContent()}
           </div>
         </DialogContent>
       </Dialog>
@@ -207,13 +259,14 @@ const Configuracoes = () => {
                           <Input
                             value={newInstanceName}
                             onChange={(e) => setNewInstanceName(e.target.value)}
+                            onKeyDown={(e) => e.key === "Enter" && handleCreateInstance()}
                             placeholder="Ex: Vendas Principal"
                             className="bg-secondary/50 border-border"
                           />
                         </div>
-                        <Button onClick={handleCreateInstance} disabled={createInstance.isPending} className="w-full">
+                        <Button onClick={handleCreateInstance} disabled={createInstance.isPending || !newInstanceName} className="w-full">
                           {createInstance.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
-                          Criar Instância
+                          Criar e Conectar
                         </Button>
                       </div>
                     </DialogContent>
@@ -227,42 +280,71 @@ const Configuracoes = () => {
                   <div className="text-center py-8">
                     <Smartphone className="h-10 w-10 text-muted-foreground mx-auto mb-2" />
                     <p className="text-sm text-muted-foreground">Nenhuma instância cadastrada</p>
+                    <p className="text-xs text-muted-foreground mt-1">Clique em "Nova" para adicionar</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
                     {instances.map((inst) => (
                       <div key={inst.id} className="flex items-center justify-between p-3 rounded-lg bg-secondary/30 border border-border">
                         <div className="flex items-center gap-3">
-                          <div className={`h-2.5 w-2.5 rounded-full ${getStatusColor(inst.status)}`} />
+                          <div className={`h-2.5 w-2.5 rounded-full flex-shrink-0 ${getStatusColor(inst.status)}`} />
                           <div>
                             <p className="text-sm font-medium text-foreground">{inst.name}</p>
                             <p className="text-xs text-muted-foreground">{getStatusLabel(inst.status, inst.phone)}</p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          {(inst.status === "qr_pending" || inst.status === "connecting") && (
+                          {/* Botão Ver QR — apenas quando qr_pending com QR disponível */}
+                          {inst.status === "qr_pending" && inst.qr_code && (
                             <Button
                               variant="outline"
                               size="sm"
                               onClick={() => setQrDialogInstanceId(inst.id)}
                             >
                               <QrCode className="h-3 w-3 mr-1" />
-                              {inst.qr_code ? "Ver QR" : <Loader2 className="h-3 w-3 animate-spin" />}
+                              Ver QR
                             </Button>
                           )}
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => reconnectInstance.mutate(inst.id)}
-                            disabled={!backendOnline}
-                          >
-                            <RefreshCw className="h-3 w-3" />
-                          </Button>
+
+                          {/* Spinner se está gerando QR mas ainda não tem */}
+                          {isConnecting(inst.status) && !inst.qr_code && (
+                            <Button variant="outline" size="sm" disabled>
+                              <Loader2 className="h-3 w-3 animate-spin mr-1" />
+                              Gerando QR
+                            </Button>
+                          )}
+
+                          {/* Botão Conectar — apenas para desconectados */}
+                          {inst.status === "disconnected" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => handleConnect(inst.id)}
+                              disabled={!backendOnline || reconnectInstance.isPending}
+                            >
+                              <Wifi className="h-3 w-3 mr-1" />
+                              Conectar
+                            </Button>
+                          )}
+
+                          {/* Botão reconectar — apenas para conectados */}
+                          {inst.status === "connected" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => reconnectInstance.mutate(inst.id)}
+                              disabled={!backendOnline || reconnectInstance.isPending}
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                            </Button>
+                          )}
+
                           <Button
                             variant="ghost"
                             size="sm"
                             className="text-destructive hover:text-destructive"
                             onClick={() => deleteInstance.mutate(inst.id)}
+                            disabled={deleteInstance.isPending}
                           >
                             <Trash2 className="h-3 w-3" />
                           </Button>
