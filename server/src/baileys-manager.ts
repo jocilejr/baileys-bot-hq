@@ -203,46 +203,20 @@ export class BaileysManager {
       const isLid = remoteJid.includes("@lid");
       
       if (chatType === "private" && isLid) {
-        const lidNumber = remoteJid.replace(/@.*$/, "");
-        let resolved = false;
+        const lidNumber = identifier;
         
-        // Try native Baileys API for LID → PN resolution
-        try {
-          const pn = await (socket as any).signalRepository?.lidMapping?.getPNForLID?.(remoteJid);
-          if (pn) {
-            identifier = pn.replace(/@.*$/, "");
-            this.logger.info(`LID resolved via native API: ${lidNumber} -> ${identifier}`);
-            resolved = true;
-          }
-        } catch (e) {
-          this.logger.warn(`LID native API failed for ${lidNumber}: ${e}`);
+        // 1. Try participant (most reliable for LID)
+        const participant = msg.key.participant;
+        if (participant && participant.includes("@s.whatsapp.net")) {
+          identifier = participant.replace(/@.*$/, "");
+          this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
+        } else if (msg.pushName && msg.pushName !== lidNumber) {
+          // 2. Keep LID but use pushName for contact matching
+          this.logger.info(`LID unresolved, using pushName "${msg.pushName}" for matching: ${lidNumber}`);
+        } else {
+          // 3. Store with raw LID
+          this.logger.warn(`LID unresolved, storing raw: ${lidNumber}`);
         }
-        
-        if (!resolved) {
-          // Fallback: try participant
-          const participant = msg.key.participant;
-          if (participant && participant.includes("@s.whatsapp.net")) {
-            identifier = participant.replace(/@.*$/, "");
-            this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
-          } else {
-            // Fallback: try onWhatsApp query
-            try {
-              const results = await socket.onWhatsApp(lidNumber);
-              if (results && results.length > 0 && results[0].jid) {
-                identifier = results[0].jid.replace(/@.*$/, "");
-                this.logger.info(`LID resolved via onWhatsApp: ${lidNumber} -> ${identifier}`);
-              } else {
-                identifier = lidNumber;
-                this.logger.warn(`LID unresolved (all methods failed): ${lidNumber}`);
-              }
-            } catch {
-              identifier = lidNumber;
-              this.logger.warn(`LID unresolved: ${lidNumber}`);
-            }
-          }
-        }
-      } else {
-        identifier = remoteJid.replace(/@.*$/, "");
       }
       
       const pushName = msg.pushName || identifier;
