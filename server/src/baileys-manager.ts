@@ -25,9 +25,10 @@ export class BaileysManager {
   private sessions = new Map<string, Session>();
   private supabase: SupabaseClient;
   private logger: Logger;
-  private startingInstances = new Set<string>(); // Mutex para prevenir chamadas concorrentes
-  private reconnectTimers = new Map<string, NodeJS.Timeout>(); // Rastrear timers de reconexão
-  private intentionalStops = new Set<string>(); // Rastrear paradas intencionais
+  private startingInstances = new Set<string>();
+  private reconnectTimers = new Map<string, NodeJS.Timeout>();
+  private intentionalStops = new Set<string>();
+  private lidMaps = new Map<string, Map<string, string>>(); // instanceId → (lidNumber → phoneNumber)
 
   constructor(supabase: SupabaseClient, logger: Logger) {
     this.supabase = supabase;
@@ -89,6 +90,39 @@ export class BaileysManager {
     const session: Session = { socket, instanceId, retryCount: 0 };
     this.sessions.set(instanceId, session);
 
+    // Initialize LID map for this instance
+    if (!this.lidMaps.has(instanceId)) {
+      this.lidMaps.set(instanceId, new Map());
+    }
+    const lidMap = this.lidMaps.get(instanceId)!;
+
+    // Listen for contacts to build LID → Phone mapping
+    socket.ev.on("contacts.set", ({ contacts: waContacts }) => {
+      let mapped = 0;
+      for (const c of waContacts) {
+        const cId = (c as any).id;
+        const cLid = (c as any).lid;
+        if (cId && cLid) {
+          const phone = cId.replace(/@.*$/, "");
+          const lid = cLid.replace(/@.*$/, "");
+          lidMap.set(lid, phone);
+          mapped++;
+        }
+      }
+      this.logger.info(`contacts.set for ${instanceId}: ${waContacts.length} contacts, ${mapped} LID mappings`);
+    });
+
+    socket.ev.on("contacts.update", (updates) => {
+      for (const c of updates) {
+        const cId = (c as any).id;
+        const cLid = (c as any).lid;
+        if (cId && cLid) {
+          const phone = cId.replace(/@.*$/, "");
+          const lid = cLid.replace(/@.*$/, "");
+          lidMap.set(lid, phone);
+        }
+      }
+    });
 
     socket.ev.on("connection.update", async (update) => {
       const { connection, lastDisconnect, qr } = update;
@@ -183,15 +217,23 @@ export class BaileysManager {
       const isLid = remoteJid.includes("@lid");
       
       if (chatType === "private" && isLid) {
-        // Try to get real number from participant or other sources
-        const participant = msg.key.participant;
-        if (participant && participant.includes("@s.whatsapp.net")) {
-          identifier = participant.replace(/@.*$/, "");
-          this.logger.info(`LID resolved via participant: ${remoteJid} -> ${identifier}`);
+        const lidNumber = remoteJid.replace(/@.*$/, "");
+        const lidMap = this.lidMaps.get(instanceId);
+        const resolvedPhone = lidMap?.get(lidNumber);
+        
+        if (resolvedPhone) {
+          identifier = resolvedPhone;
+          this.logger.info(`LID resolved via map: ${lidNumber} -> ${identifier}`);
         } else {
-          // Fallback: use the LID number but log warning
-          identifier = remoteJid.replace(/@.*$/, "");
-          this.logger.warn(`LID JID could not be resolved: ${remoteJid}, participant: ${participant || "none"}`);
+          // Fallback: try participant
+          const participant = msg.key.participant;
+          if (participant && participant.includes("@s.whatsapp.net")) {
+            identifier = participant.replace(/@.*$/, "");
+            this.logger.info(`LID resolved via participant: ${lidNumber} -> ${identifier}`);
+          } else {
+            identifier = lidNumber;
+            this.logger.warn(`LID unresolved: ${lidNumber} (map size: ${lidMap?.size || 0}, participant: ${participant || "none"})`);
+          }
         }
       } else {
         identifier = remoteJid.replace(/@.*$/, "");
